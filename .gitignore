@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Django
+db.sqlite3
+*.sqlite3
+*.sqlite
+*.db
+*.sqlite3-journal
+local_settings.py
+media/
+static/
+staticfiles/
+
+# Secrets / Environment
+.env
+.env.*
+*.env
+!.env.example
+*.key
+*.pem
+
+# Logs
+*.log
+logs/
+celerybeat-schedule
+celerybeat.pid
+
+# Tests / Coverage / Caches
+.pytest_cache/
+.tox/
+.mypy_cache/
+.cache/
+.coverage
+coverage.xml
+htmlcov/
+pytestdebug.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.swm
+.DS_Store
+
+# Docker (local overrides)
+docker-compose.override.yml
+*.local.yml
+
+# Node (if present)
+node_modules/
+npm-debug.log*
+
+
