@@ -21,6 +21,8 @@ services:
     command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
     expose:
       - "8000"
+    volumes:
+      - ./staticfiles:/app/staticfiles
     environment:
       - DJANGO_SETTINGS_MODULE=ClipAI.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
