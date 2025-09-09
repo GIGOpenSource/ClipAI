@@ -1,0 +1,3 @@
+provider,name,is_default,redirect_uris,scopes,app_id,app_secret,account_external_user_id,account_external_username,ig_user_access_token,account_expires_at,account_scopes,account_status
+instagram,My IG App,FALSE,https://your.app/social/oauth/instagram/callback,user_profile,IG_APP_ID,IG_APP_SECRET,123456789,MyIGUser,IG_USER_ACCESS_TOKEN,2026-01-01T00:00:00,user_profile,active
+

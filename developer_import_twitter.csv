@@ -1,0 +1,3 @@
+provider,name,is_default,api_version,redirect_uris,scopes,api_key,api_secret,bearer_token,account_external_user_id,account_external_username,oauth1_user_token,oauth1_user_token_secret,account_expires_at,account_scopes,account_status
+twitter,My X Dev,TRUE,2,https://your.app/social/oauth/twitter/callback,"tweet.read users.read",TW_API_KEY,TW_API_SECRET,,945921982977019904,,oauth1_user_token,oauth1_user_token_secret,2026-01-01T00:00:00,"tweet.read users.read",active
+

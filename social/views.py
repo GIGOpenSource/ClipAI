@@ -93,11 +93,82 @@ class SocialConfigViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def import_my_config(self, request):
         payload = request.data.copy()
+        provider = (payload.get('provider') or '').lower()
+
+        # Normalize provider-specific aliases for config fields
+        if provider == 'twitter':
+            if payload.get('api_key') and not payload.get('client_id'):
+                payload['client_id'] = payload.get('api_key')
+            if payload.get('api_secret') and not payload.get('client_secret'):
+                payload['client_secret'] = payload.get('api_secret')
+        if provider in {'facebook', 'instagram'}:
+            if payload.get('client_id') and not payload.get('app_id'):
+                payload['app_id'] = payload.get('client_id')
+            if payload.get('client_secret') and not payload.get('app_secret'):
+                payload['app_secret'] = payload.get('client_secret')
+
+        # Normalize redirect_uris and scopes formats
+        if payload.get('redirect_uri') and not payload.get('redirect_uris'):
+            payload['redirect_uris'] = [payload.get('redirect_uri')]
+        if isinstance(payload.get('redirect_uris'), str):
+            payload['redirect_uris'] = [u.strip() for u in payload['redirect_uris'].split(',') if u.strip()]
+        scopes_val = payload.get('scopes')
+        if isinstance(scopes_val, str):
+            payload['scopes'] = [p.strip() for p in scopes_val.replace(',', ' ').split() if p.strip()]
+        # Apply provider defaults when scopes missing/invalid (prefer read+write minimal set)
+        if not isinstance(payload.get('scopes'), list) or len(payload.get('scopes') or []) == 0:
+            if provider == 'twitter':
+                payload['scopes'] = ['tweet.read', 'tweet.write', 'users.read']
+            elif provider == 'facebook':
+                payload['scopes'] = ['public_profile', 'pages_read_engagement', 'pages_manage_posts']
+            elif provider == 'instagram':
+                payload['scopes'] = ['user_profile', 'user_media']
+            else:
+                payload['scopes'] = []
         # 强制归属到当前用户，忽略传入的 owner/created_by
         payload.pop('owner', None)
         payload.pop('created_by', None)
         # 拆出账号令牌信息（可选）
         account_data = payload.pop('account', None)
+        # Normalize provider-specific account fields from top-level into account
+        acc_alias = {}
+        if provider == 'twitter':
+            if payload.get('oauth1_user_token'):
+                acc_alias['access_token'] = payload.get('oauth1_user_token')
+            if payload.get('oauth1_user_token_secret'):
+                acc_alias['refresh_token'] = payload.get('oauth1_user_token_secret')
+            if payload.get('account_external_user_id'):
+                acc_alias['external_user_id'] = payload.get('account_external_user_id')
+            if payload.get('account_external_username'):
+                acc_alias['external_username'] = payload.get('account_external_username')
+        elif provider == 'facebook':
+            token = payload.get('page_access_token') or payload.get('user_access_token')
+            if token:
+                acc_alias['access_token'] = token
+            if payload.get('account_external_user_id'):
+                acc_alias['external_user_id'] = payload.get('account_external_user_id')
+            if payload.get('account_external_username'):
+                acc_alias['external_username'] = payload.get('account_external_username')
+        elif provider == 'instagram':
+            if payload.get('ig_user_access_token'):
+                acc_alias['access_token'] = payload.get('ig_user_access_token')
+            if payload.get('account_external_user_id'):
+                acc_alias['external_user_id'] = payload.get('account_external_user_id')
+            if payload.get('account_external_username'):
+                acc_alias['external_username'] = payload.get('account_external_username')
+        if payload.get('account_status'):
+            acc_alias['status'] = payload.get('account_status')
+        if payload.get('account_scopes') and isinstance(payload.get('account_scopes'), str):
+            acc_alias['scopes'] = [p.strip() for p in payload.get('account_scopes').replace(',', ' ').split() if p.strip()]
+        if payload.get('account_expires_at'):
+            acc_alias['expires_at'] = payload.get('account_expires_at')
+        if acc_alias:
+            if not isinstance(account_data, dict):
+                account_data = {}
+            account_data.update({k: v for k, v in acc_alias.items() if v is not None})
+        # If account scopes still missing, inherit from config scopes
+        if isinstance(account_data, dict) and 'scopes' not in account_data:
+            account_data['scopes'] = payload.get('scopes') or []
         # 若传入 config_id 则更新，否则创建
         config_id = payload.pop('config_id', None)
         instance = None
