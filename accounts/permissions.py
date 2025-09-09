@@ -17,14 +17,15 @@ class IsOwnerOrAdmin(BasePermission):
     """
 
     def has_permission(self, request, view):
-        # Only object-level checks; allow and defer to has_object_permission
-        return True
+        # 需登录；对象级再判断归属或管理员
+        return bool(request.user and request.user.is_authenticated)
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        if not (user and user.is_authenticated and user.is_staff):
+        if not (user and user.is_authenticated):
             return False
-        if getattr(user, 'is_superuser', False):
+        # 管理员可访问所有对象
+        if getattr(user, 'is_staff', False) or getattr(user, 'is_superuser', False):
             return True
         # Direct owner relations
         if getattr(obj, 'owner', None) is not None:
