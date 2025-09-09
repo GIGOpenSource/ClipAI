@@ -5,8 +5,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./frontend:/usr/share/nginx/html:ro
@@ -15,6 +13,8 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - web
+    networks:
+      - clipai_net
   web:
     build: .
     container_name: clipai_web
@@ -35,6 +35,8 @@ services:
     depends_on:
       - redis
       - db
+    networks:
+      - clipai_net
 
   worker:
     build: .
@@ -51,6 +53,8 @@ services:
     depends_on:
       - redis
       - db
+    networks:
+      - clipai_net
 
   beat:
     build: .
@@ -67,12 +71,16 @@ services:
     depends_on:
       - redis
       - db
+    networks:
+      - clipai_net
 
   redis:
     image: redis:7-alpine
     container_name: clipai_redis
     ports:
       - "6379:6379"
+    networks:
+      - clipai_net
 
   db:
     image: postgres:16-alpine
@@ -85,8 +93,14 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - clipai_net
 
 volumes:
   pgdata:
 
+
+networks:
+  clipai_net:
+    name: clipai_net
 
