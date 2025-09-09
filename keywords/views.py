@@ -20,7 +20,7 @@ from django.contrib.auth import get_user_model
 class KeywordConfigViewSet(viewsets.ModelViewSet):
     queryset = KeywordConfig.objects.all().order_by('-created_at')
     serializer_class = KeywordConfigSerializer
-    permission_classes = [IsAuthenticated, IsStaffUser, IsOwnerOrAdmin]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_queryset(self):
         qs = super().get_queryset()

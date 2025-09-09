@@ -16,9 +16,16 @@ from .serializers import OverviewResponseSerializer, SummaryResponseSerializer, 
 
 def _filters(request):
     qs = TaskRun.objects.all()
-    owner_id = request.query_params.get('owner_id')
-    if owner_id:
-        qs = qs.filter(owner_id=owner_id)
+    # 管理员可查看全部（可通过 owner_id 过滤）；普通用户只能查看自己的数据；未登录无数据
+    if request.user and request.user.is_authenticated:
+        if request.user.is_staff:
+            owner_id = request.query_params.get('owner_id')
+            if owner_id:
+                qs = qs.filter(owner_id=owner_id)
+        else:
+            qs = qs.filter(owner_id=request.user.id)
+    else:
+        return TaskRun.objects.none()
     provider = request.query_params.get('provider')
     if provider:
         qs = qs.filter(provider=provider)
@@ -38,7 +45,7 @@ def _filters(request):
 
 
 class SummaryView(APIView):
-    permission_classes = [IsAuthenticated, IsStaffUser]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(summary='统计概览', tags=['数据统计'], responses=SummaryResponseSerializer)
     def get(self, request):
@@ -61,7 +68,7 @@ class SummaryView(APIView):
 
 
 class BreakdownProviderView(APIView):
-    permission_classes = [IsAuthenticated, IsStaffUser]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(summary='按平台分布', tags=['数据统计'], responses=ProviderBreakdownItemSerializer(many=True))
     def get(self, request):
@@ -78,7 +85,7 @@ class BreakdownProviderView(APIView):
 
 
 class BreakdownTypeView(APIView):
-    permission_classes = [IsAuthenticated, IsStaffUser]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(summary='按任务类型分布', tags=['数据统计'], responses=TypeBreakdownItemSerializer(many=True))
     def get(self, request):
@@ -95,7 +102,7 @@ class BreakdownTypeView(APIView):
 
 
 class OverviewView(APIView):
-    permission_classes = [IsAuthenticated, IsStaffUser]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         summary='按天统计表（最新在前）',
@@ -117,7 +124,7 @@ class OverviewView(APIView):
         # 先从 DailyStat 读取；缺失的日期再按需增量计算并保存，避免重复聚合
         stats_qs = DailyStat.objects.all()
         if request.user and request.user.is_authenticated:
-            if request.user.is_superuser:
+            if request.user.is_staff:
                 # 管理员可查看全部；若显式传 owner_id 则按其过滤
                 owner_id = request.query_params.get('owner_id')
                 if owner_id:
@@ -129,7 +136,7 @@ class OverviewView(APIView):
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
         # 管理员 aggregate=all → 按天汇总所有 owner
-        if request.user.is_superuser and request.query_params.get('aggregate') == 'all':
+        if request.user.is_staff and request.query_params.get('aggregate') == 'all':
             rows = stats_qs.values('date').annotate(
                 account_count=Sum('account_count'),
                 ins=Sum('ins'),
@@ -187,20 +194,20 @@ class OverviewView(APIView):
 
 
 class OverviewExportView(APIView):
-    permission_classes = [IsAuthenticated, IsStaffUser]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(summary='按天统计表 CSV 导出', tags=['数据统计'])
     def get(self, request):
         # 复用 OverviewView 的数据聚合逻辑（简化版：直接读 DailyStat）
         stats_qs = DailyStat.objects.all()
         if request.user and request.user.is_authenticated:
-            if request.user.is_superuser:
+            if request.user.is_staff:
                 owner_id = request.query_params.get('owner_id')
                 if owner_id:
                     stats_qs = stats_qs.filter(owner_id=owner_id)
             else:
                 stats_qs = stats_qs.filter(owner_id=request.user.id)
-        if request.user.is_superuser and request.query_params.get('aggregate') == 'all':
+        if request.user.is_staff and request.query_params.get('aggregate') == 'all':
             rows = stats_qs.values('date').annotate(
                 account_count=Sum('account_count'),
                 ins=Sum('ins'),

@@ -20,7 +20,7 @@ from django.contrib.auth import get_user_model
 class PromptConfigViewSet(viewsets.ModelViewSet):
     queryset = PromptConfig.objects.all().order_by('-created_at')
     serializer_class = PromptConfigSerializer
-    permission_classes = [IsAuthenticated, IsStaffUser, IsOwnerOrAdmin]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_queryset(self):
         qs = super().get_queryset()
