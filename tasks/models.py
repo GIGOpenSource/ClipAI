@@ -86,3 +86,30 @@ class TaskRun(models.Model):
         ordering = ['-started_at']
 
 # Create your models here.
+
+
+class SocialPost(models.Model):
+    PROVIDER_CHOICES = [
+        ('twitter', 'Twitter'),
+        ('facebook', 'Facebook'),
+        ('instagram', 'Instagram'),
+    ]
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='social_posts')
+    provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)
+    scheduled_task = models.ForeignKey(ScheduledTask, on_delete=models.SET_NULL, null=True, blank=True, related_name='posts')
+    task_run = models.ForeignKey(TaskRun, on_delete=models.SET_NULL, null=True, blank=True, related_name='posts')
+    external_id = models.CharField(max_length=200, help_text='平台返回的对象ID')
+    text = models.TextField(blank=True, help_text='发布时的文本/说明')
+    payload = models.JSONField(null=True, blank=True, help_text='平台返回的完整数据结构')
+    posted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-posted_at']
+        indexes = [
+            models.Index(fields=['provider', 'external_id']),
+            models.Index(fields=['owner']),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider}:{self.external_id}"

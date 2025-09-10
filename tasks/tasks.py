@@ -36,10 +36,44 @@ def execute_scheduled_task(task_id: int):
         sla_met=data['agg']['sla_met'],
         rate_limit_hit=rl_hit,
     )
+    # Persist last external id if provided (for monitoring latest post)
+    try:
+        last_ext_id = data.get('agg', {}).get('last_external_id')
+        if last_ext_id:
+            run.external_object_id = str(last_ext_id)
+            run.save(update_fields=['external_object_id'])
+    except Exception:
+        pass
     run.finished_at = timezone.now()
     run.save(update_fields=['finished_at'])
     task.last_run_at = run.finished_at
     task.save(update_fields=['last_run_at'])
+    # Create SocialPost record on successful publish
+    try:
+        from .models import SocialPost
+        payload = resp or {}
+        provider = data['agg']['provider']
+        ext_id = None
+        text_used = (task.payload_template or {}).get('text', '')
+        if provider == 'twitter' and isinstance(payload.get('tweet'), dict):
+            ext_id = ((payload.get('tweet') or {}).get('data') or {}).get('id')
+            text_used = ((payload.get('tweet') or {}).get('data') or {}).get('text') or text_used
+        elif provider == 'facebook' and isinstance(payload.get('facebook_post'), dict):
+            ext_id = (payload.get('facebook_post') or {}).get('id')
+        elif provider == 'instagram' and isinstance(payload.get('ig_media'), dict):
+            ext_id = (payload.get('ig_media') or {}).get('id')
+        if ext_id:
+            SocialPost.objects.create(
+                owner=task.owner,
+                provider=provider,
+                scheduled_task=task,
+                task_run=run,
+                external_id=str(ext_id),
+                text=text_used or '',
+                payload=payload,
+            )
+    except Exception:
+        pass
     return {'status': 'ok', 'run_id': run.id}
 
 

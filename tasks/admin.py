@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from .models import ScheduledTask, TaskRun
+from .models import ScheduledTask, TaskRun, SocialPost
 from social.models import SocialConfig
 from ai.models import AIConfig
 from keywords.models import KeywordConfig
@@ -78,3 +78,10 @@ class TaskRunAdmin(admin.ModelAdmin):
     search_fields = ('scheduled_task__id',)
 
 # Register your models here.
+
+
+@admin.register(SocialPost)
+class SocialPostAdmin(admin.ModelAdmin):
+    list_display = ('id','provider','external_id','owner','posted_at','scheduled_task','task_run')
+    list_filter = ('provider',)
+    search_fields = ('external_id','owner__username')

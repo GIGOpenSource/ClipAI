@@ -8,10 +8,13 @@ from social.models import SocialConfig
 from ai.models import AIConfig
 from keywords.models import KeywordConfig
 from prompts.models import PromptConfig
-from .clients import FacebookClient, TwitterClient, InstagramClient
+ 
+from .platforms.twitter import handle as tw_handle
+from .platforms.facebook_instagram import handle_facebook as fb_handle, handle_instagram as ig_handle
 from ai.client import OpenAICompatibleClient
 from django.conf import settings
 from social.models import SocialAccount
+from django.core.cache import cache
 _rate_lock = Lock()
 _rate_window_seconds = 60
 _rate_limit_per_window = 30  # 每账号每窗口最多外呼次数（占位，可后续改为配置）
@@ -58,7 +61,7 @@ def _idem_seen_before(key: str) -> bool:
             return True
         _idem_seen[key] = now
         return False
-from faker import Faker
+ 
 
 
 def execute_task(task) -> Dict[str, Any]:
@@ -112,188 +115,77 @@ def execute_task(task) -> Dict[str, Any]:
     }
 
     response: Dict[str, Any] = {'task_type': task.type, 'provider': task.provider}
-    try:
-        if task.provider == 'facebook' and social_cfg and social_cfg.page_id and (social_cfg.page_access_token or account):
-            # 限速 & 幂等检查
-            idem = _idem_key(task, (task.payload_template or {}))
-            if _idem_seen_before(idem):
-                response['skipped'] = 'idempotent_duplicate'
-                raise Exception('Skipped duplicate by idempotency key')
-            if not _rate_allow(task.owner_id, task.provider, getattr(account, 'id', None)):
-                response['skipped'] = 'rate_limited'
-                response['rate_limited'] = True
-                raise Exception('Rate limited - skipped')
-            page_token = (account.get_access_token() if account else None) or social_cfg.page_access_token
-            fb = FacebookClient(api_version=social_cfg.api_version or 'v19.0', page_access_token=page_token, page_id=social_cfg.page_id)
-            if task.type == 'post':
-                response['facebook_post'] = fb.post_feed(message=(task.payload_template or {}).get('text', ''))
-            elif task.type == 'reply_comment':
-                cid = (task.payload_template or {}).get('comment_id')
-                msg = (task.payload_template or {}).get('text', '')
-                if cid:
-                    response['facebook_reply'] = fb.reply_comment(comment_id=cid, message=msg)
-        elif task.provider == 'twitter' and (social_cfg or account):
-            consumer_key = getattr(social_cfg, 'client_id', '') or None
-            consumer_secret = getattr(social_cfg, 'client_secret', '') or None
-            # 优先使用 OAuth2（bearer）；否则回退 OAuth1（用户上下文）
-            has_oauth1 = bool(account and account.get_access_token() and account.get_refresh_token())
-            bearer_cfg = getattr(social_cfg, 'bearer_token', None)
-            if bearer_cfg or has_oauth1:
-                if bearer_cfg:
-                    tw = TwitterClient(
-                        bearer_token=bearer_cfg,
-                    )
+    # Prepare content to post: prefer AI-generated for post tasks
+    text_to_post = (task.payload_template or {}).get('text', '')
+    if task.type == 'post':
+        if ai_cfg and ai_cfg.api_key:
+            try:
+                client = OpenAICompatibleClient(
+                    base_url=ai_cfg.base_url or 'https://api.openai.com',
+                    api_key=ai_cfg.api_key,
+                )
+                payload = (task.payload_template or {})
+                base_text = payload.get('text', '')
+                system_prompt = (getattr(prompt_cfg, 'content', '') or '你是一个社交媒体助理，请生成合适的简短中文内容。')
+                variables = getattr(prompt_cfg, 'variables', []) or []
+                for var in variables:
+                    placeholder = '{' + str(var) + '}'
+                    value = str(payload.get(var, ''))
+                    system_prompt = system_prompt.replace(placeholder, value)
+                messages = [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': base_text or f'请根据类型 {task.type} 与平台 {task.provider} 生成一句适合发布或回复的中文内容。'}
+                ]
+                ai_res = client.chat_completion(model=ai_cfg.model, messages=messages)
+                ai_text = ai_res.get('content') or ''
+                if ai_text:
+                    text_to_post = ai_text
+                    response['ai_generated'] = True
+                    response['ai_meta'] = {
+                        'latency_ms': ai_res.get('latency_ms'),
+                        'tokens': ai_res.get('tokens'),
+                        'model': ai_cfg.model,
+                        'provider': ai_cfg.provider,
+                    }
                 else:
-                    tw = TwitterClient(
-                        consumer_key=consumer_key,
-                        consumer_secret=consumer_secret,
-                        access_token=account.get_access_token(),
-                        access_token_secret=account.get_refresh_token(),
-                    )
-                # 捕获平台限速信息（只读调用，不改变任务行为）——放在幂等检查之前保证能记录
-                try:
-                    _me_body, _rl = tw.get_me_with_headers()
-                    response['rate_limit_headers'] = _rl
-                    response['rate_limit_warning'] = bool(_rl.get('warning'))
-                    if response['rate_limit_warning']:
-                        response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
-                except Exception:
-                    # 忽略诊断失败，不影响主流程
-                    pass
-                # 幂等与本地频控
-                idem = _idem_key(task, (task.payload_template or {}))
-                if _idem_seen_before(idem):
-                    response['skipped'] = 'idempotent_duplicate'
-                    raise Exception('Skipped duplicate by idempotency key')
-                if not _rate_allow(task.owner_id, task.provider, getattr(account, 'id', None)):
-                    response['skipped'] = 'rate_limited'
-                    response['rate_limited'] = True
-                    raise Exception('Rate limited - skipped')
-            if task.type == 'post':
-                try:
-                    response['tweet'] = tw.post_tweet(text=(task.payload_template or {}).get('text', ''))
-                except Exception as _e:
-                    # 失败时尽可能提取平台限速头
-                    try:
-                        resp_obj = getattr(_e, 'response', None)
-                        if resp_obj is not None:
-                            _rl = tw._extract_rate_limit(resp_obj)
-                            response['rate_limit_headers'] = _rl
-                            response['rate_limit_warning'] = bool(_rl.get('warning'))
-                            if response['rate_limit_warning']:
-                                response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
-                    except Exception:
-                        pass
-                    raise
-            elif task.type == 'reply_message':
-                reply_to = (task.payload_template or {}).get('tweet_id')
-                text = (task.payload_template or {}).get('text', '')
-                if reply_to and (bearer_cfg or has_oauth1):
-                    try:
-                        response['tweet_reply'] = tw.reply_tweet(reply_to_tweet_id=reply_to, text=text)
-                    except Exception as _e:
-                        try:
-                            resp_obj = getattr(_e, 'response', None)
-                            if resp_obj is not None:
-                                _rl = tw._extract_rate_limit(resp_obj)
-                                response['rate_limit_headers'] = _rl
-                                response['rate_limit_warning'] = bool(_rl.get('warning'))
-                                if response['rate_limit_warning']:
-                                    response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
-                        except Exception:
-                            pass
-                        raise
-        elif task.provider == 'instagram' and social_cfg and social_cfg.ig_business_account_id and (social_cfg.page_access_token or account):
+                    response['ai_generated'] = False
+            except Exception as e:
+                response['ai_error'] = str(e)
+                response['ai_generated'] = False
+    try:
+        # Global rate-limit block (owner+provider+account)
+        def _block_key(oid, prov, aid):
+            return f"rl:block:{oid or 0}:{prov}:{aid or 0}"
+
+        def _is_blocked(oid, prov, aid) -> bool:
+            return bool(cache.get(_block_key(oid, prov, aid)))
+
+        def _block_for(oid, prov, aid, seconds: int):
+            if seconds and seconds > 0:
+                cache.set(_block_key(oid, prov, aid), 1, timeout=seconds)
+
+        if _is_blocked(task.owner_id, task.provider, getattr(account, 'id', None)):
+            response['skipped'] = 'rate_limit_blocked'
+            response['rate_limited'] = True
+            raise Exception('Rate limit blocked - skipped')
+        def idem_guard():
             idem = _idem_key(task, (task.payload_template or {}))
             if _idem_seen_before(idem):
                 response['skipped'] = 'idempotent_duplicate'
                 raise Exception('Skipped duplicate by idempotency key')
+
+        def rate_guard():
             if not _rate_allow(task.owner_id, task.provider, getattr(account, 'id', None)):
                 response['skipped'] = 'rate_limited'
                 response['rate_limited'] = True
                 raise Exception('Rate limited - skipped')
-            page_token = (account.get_access_token() if account else None) or social_cfg.page_access_token
-            ig = InstagramClient(api_version=social_cfg.api_version or 'v19.0', page_access_token=page_token, ig_business_account_id=social_cfg.ig_business_account_id)
-            if task.type == 'post':
-                response['ig_media'] = ig.post_media(caption=(task.payload_template or {}).get('text', ''))
-        if len(response) == 2 and getattr(settings, 'AI_FAKE_FALLBACK_ENABLED', True):
-            # 缺凭据：优先调用 AI 生成文本，再用 Faker 写入假外呼结果
-            generated_text = None
-            ai_meta = {}
-            # 关键词过滤
-            def _match_keywords(text: str) -> bool:
-                if not kw_cfg:
-                    return True
-                include = kw_cfg.include_keywords or []
-                exclude = kw_cfg.exclude_keywords or []
-                mode = (kw_cfg.match_mode or 'any')
-                text_l = text or ''
-                # 排除优先
-                for w in exclude:
-                    if w and w in text_l:
-                        return False
-                if not include:
-                    return True
-                if mode == 'all':
-                    return all((w in text_l) for w in include if w)
-                if mode == 'regex':
-                    try:
-                        return any(re.search(p, text_l) for p in include if p)
-                    except re.error:
-                        return any((w in text_l) for w in include if w)
-                # default any
-                return any((w in text_l) for w in include if w)
 
-            if ai_cfg and ai_cfg.api_key:
-                try:
-                    client = OpenAICompatibleClient(
-                        base_url=ai_cfg.base_url or 'https://api.openai.com',
-                        api_key=ai_cfg.api_key,
-                    )
-                    # 组装提示词：PromptConfig.content 优先，否则使用 payload 文本
-                    payload = (task.payload_template or {})
-                    base_text = payload.get('text', '')
-                    # 变量替换
-                    system_prompt = (getattr(prompt_cfg, 'content', '') or '你是一个社交媒体助理，请生成合适的简短中文内容。')
-                    variables = getattr(prompt_cfg, 'variables', []) or []
-                    for var in variables:
-                        placeholder = '{' + str(var) + '}'
-                        value = str(payload.get(var, ''))
-                        system_prompt = system_prompt.replace(placeholder, value)
-                    # 关键词过滤（基于文本源）——发布贴文不做拦截
-                    if task.type != 'post':
-                        if not _match_keywords(base_text):
-                            raise Exception('keyword_filter_blocked')
-                    messages = [
-                        {'role': 'system', 'content': system_prompt},
-                        {'role': 'user', 'content': base_text or f'请根据类型 {task.type} 与平台 {task.provider} 生成一句适合发布或回复的中文内容。'}
-                    ]
-                    ai_res = client.chat_completion(model=ai_cfg.model, messages=messages)
-                    generated_text = ai_res.get('content') or ''
-                    ai_meta = {'latency_ms': ai_res.get('latency_ms'), 'tokens': ai_res.get('tokens'), 'model': ai_cfg.model, 'provider': ai_cfg.provider}
-                except Exception as e:
-                    response['ai_error'] = str(e)
-
-            from faker import Faker as _Faker
-            fk = _Faker()
-            response['fake'] = True
-            if task.provider == 'facebook':
-                if task.type == 'post':
-                    response['facebook_post'] = {'id': f'{fk.random_number(digits=10)}_post', 'text': generated_text or fk.sentence()}
-                elif task.type == 'reply_comment':
-                    response['facebook_reply'] = {'id': f'{fk.random_number(digits=10)}_comment', 'text': generated_text or fk.sentence()}
-            elif task.provider == 'twitter':
-                if task.type == 'post':
-                    response['tweet'] = {'data': {'id': str(fk.random_number(digits=10)), 'text': generated_text or fk.sentence()}}
-                elif task.type == 'reply_message':
-                    response['tweet_reply'] = {'data': {'id': str(fk.random_number(digits=10)), 'text': generated_text or fk.sentence()}}
-            elif task.provider == 'instagram':
-                if task.type == 'post':
-                    response['ig_media'] = {'id': str(fk.random_number(digits=10)), 'caption': generated_text or fk.sentence()}
-            response['ai_generated'] = bool(generated_text)
-            if ai_meta:
-                response['ai_meta'] = ai_meta
-            response['message'] = 'AI 生成文本 + Faker 外呼（凭据缺失）'
+        if task.provider == 'facebook':
+            fb_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
+        elif task.provider == 'twitter':
+            tw_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
+        elif task.provider == 'instagram':
+            ig_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
     except Exception as exc:
         response['error'] = str(exc)
     finished_at = timezone.now()
@@ -319,6 +211,24 @@ def execute_task(task) -> Dict[str, Any]:
         'sla_met': sla_met,
     }
 
+    # Track last created external id for quick monitoring
+    last_id = None
+    try:
+        if response.get('tweet') and isinstance(response['tweet'], dict):
+            last_id = (response['tweet'].get('data') or {}).get('id')
+        elif response.get('facebook_post') and isinstance(response['facebook_post'], dict):
+            last_id = response['facebook_post'].get('id')
+        elif response.get('ig_media') and isinstance(response['ig_media'], dict):
+            last_id = response['ig_media'].get('id')
+    except Exception:
+        pass
+    if last_id:
+        try:
+            from .models import TaskRun
+            # Note: TaskRun creation happens in view; here we only return id; views will persist.
+            agg['last_external_id'] = last_id
+        except Exception:
+            pass
     return {'request_dump': request_dump, 'response': response, 'agg': agg, 'used': used}
 
 
