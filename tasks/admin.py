@@ -66,14 +66,14 @@ class ScheduledTaskAdminForm(forms.ModelForm):
 @admin.register(ScheduledTask)
 class ScheduledTaskAdmin(admin.ModelAdmin):
     form = ScheduledTaskAdminForm
-    list_display = ('owner', 'type', 'provider', 'enabled', 'recurrence_type', 'interval_value', 'time_of_day', 'next_run_at', 'last_run_at', 'status')
+    list_display = ('id','owner', 'type', 'provider', 'enabled', 'recurrence_type', 'interval_value', 'time_of_day', 'next_run_at', 'last_run_at', 'status')
     list_filter = ('provider', 'type', 'enabled', 'recurrence_type')
     search_fields = ('owner__username',)
 
 
 @admin.register(TaskRun)
 class TaskRunAdmin(admin.ModelAdmin):
-    list_display = ('scheduled_task', 'success', 'provider', 'task_type', 'duration_ms', 'started_at', 'finished_at')
+    list_display = ('id','scheduled_task', 'success', 'provider', 'task_type', 'duration_ms', 'started_at', 'finished_at')
     list_filter = ('provider', 'task_type', 'success', 'sla_met')
     search_fields = ('scheduled_task__id',)
 
