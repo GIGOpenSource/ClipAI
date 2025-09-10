@@ -38,6 +38,17 @@ class ChangePasswordSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, min_length=6, max_length=128)
 
 
+class AdminChangePasswordSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField(required=False)
+    username = serializers.CharField(required=False)
+    password = serializers.CharField(write_only=True, min_length=6, max_length=128)
+
+    def validate(self, attrs):
+        if not attrs.get('user_id') and not attrs.get('username'):
+            raise serializers.ValidationError('user_id 或 username 必须提供一个')
+        return attrs
+
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(help_text='管理员用户名')
     password = serializers.CharField(write_only=True, help_text='密码')

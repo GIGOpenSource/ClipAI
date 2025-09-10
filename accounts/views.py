@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
-from .serializers import UserSerializer, GroupSerializer, PermissionSerializer, AuditLogSerializer, SetPasswordSerializer, ChangePasswordSerializer, LoginSerializer, RegistrationSerializer
+from .serializers import UserSerializer, GroupSerializer, PermissionSerializer, AuditLogSerializer, SetPasswordSerializer, ChangePasswordSerializer, AdminChangePasswordSerializer, LoginSerializer, RegistrationSerializer
 from .permissions import IsStaffUser
 from .models import AuditLog
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
@@ -275,3 +275,39 @@ class LogoutAllAPIView(APIView):
         except Exception:
             pass
         return Response({'status': 'logged_out_all'})
+
+
+class AdminChangePasswordAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsStaffUser]
+
+    @extend_schema(summary='管理员修改任意用户密码并使其所有 token 失效', tags=['认证'], request=AdminChangePasswordSerializer,
+                   responses={200: OpenApiResponse(description='修改成功')})
+    def post(self, request):
+        serializer = AdminChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = None
+        if serializer.validated_data.get('user_id'):
+            user = User.objects.filter(id=serializer.validated_data['user_id']).first()
+        if not user and serializer.validated_data.get('username'):
+            user = User.objects.filter(username=serializer.validated_data['username']).first()
+        if not user:
+            return Response({'detail': '用户不存在'}, status=status.HTTP_404_NOT_FOUND)
+        user.set_password(serializer.validated_data['password'])
+        user.save(update_fields=['password'])
+        # Blacklist tokens
+        try:
+            tokens = OutstandingToken.objects.filter(user=user)
+            for t in tokens:
+                BlacklistedToken.objects.get_or_create(token=t)
+        except Exception:
+            pass
+        # End sessions
+        try:
+            from django.contrib.sessions.models import Session
+            for s in Session.objects.all():
+                data = s.get_decoded()
+                if str(user.id) == str(data.get('_auth_user_id')):
+                    s.delete()
+        except Exception:
+            pass
+        return Response({'status': 'ok'})
