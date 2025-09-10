@@ -26,6 +26,9 @@ class UserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # 忽略密码更新（请使用专门的重置密码接口）
         validated_data.pop('password', None)
+        # 禁止通过更新更改权限字段
+        validated_data.pop('is_staff', None)
+        validated_data.pop('is_superuser', None)
         return super().update(instance, validated_data)
 
 
