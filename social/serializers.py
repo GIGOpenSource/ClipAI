@@ -94,11 +94,6 @@ class SocialConfigSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'created_by'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']
-        extra_kwargs = {
-            'client_secret': {'write_only': True},
-            'app_secret': {'write_only': True},
-            'page_access_token': {'write_only': True},
-        }
 
     def _mask(self, value: str) -> str:
         if not value:
