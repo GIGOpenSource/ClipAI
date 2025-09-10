@@ -82,7 +82,7 @@ class SocialAccount(models.Model):
     provider = models.CharField(max_length=32, choices=SocialConfig.PROVIDER_CHOICES, help_text='平台')
     config = models.ForeignKey(SocialConfig, on_delete=models.SET_NULL, null=True, blank=True, related_name='accounts', help_text='关联的应用配置（可选）')
 
-    external_user_id = models.CharField(max_length=200, help_text='平台侧用户ID')
+    external_user_id = models.CharField(max_length=200, help_text='平台侧用户ID', blank=True, default='')
     external_username = models.CharField(max_length=200, blank=True, help_text='平台侧用户名（可选）')
 
     access_token = models.TextField(blank=True, help_text='访问令牌（加密存储，开发可为明文）')

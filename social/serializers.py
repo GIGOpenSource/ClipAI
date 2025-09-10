@@ -1,22 +1,23 @@
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from .models import SocialConfig, SocialAccount
-
-
-class SocialConfigSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SocialConfig
-        fields = '__all__'
 
 
 class SocialAccountSerializer(serializers.ModelSerializer):
     access_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
     refresh_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
     has_access_token = serializers.SerializerMethodField(read_only=True)
+    # # 输出时将 owner 作为对象返回
+    # class OwnerBriefSerializer(serializers.ModelSerializer):
+    #     class Meta:
+    #         model = get_user_model()
+    #         fields = ['id', 'username', 'email', 'first_name', 'last_name']
+    # owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
 
     class Meta:
         model = SocialAccount
         fields = [
-            'id', 'owner', 'provider', 'config',
+            'id', 'owner', 'owner_detail', 'provider', 'config',
             'external_user_id', 'external_username',
             'access_token', 'refresh_token', 'has_access_token',
             'expires_at', 'scopes', 'status',
@@ -53,10 +54,18 @@ class SocialAccountSerializer(serializers.ModelSerializer):
         account.save()
         return account
 
-from rest_framework import serializers
-from django.contrib.auth import get_user_model
-from .models import SocialConfig
-
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # 列表/详情均返回明文 token（按需展示）
+        try:
+            data['access_token'] = instance.get_access_token() if instance.access_token else ''
+        except Exception:
+            data['access_token'] = ''
+        try:
+            data['refresh_token'] = instance.get_refresh_token() if instance.refresh_token else ''
+        except Exception:
+            data['refresh_token'] = ''
+        return data
 
 class SocialConfigSerializer(serializers.ModelSerializer):
     # 掩码字段
@@ -87,7 +96,6 @@ class SocialConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at', 'created_by']
         extra_kwargs = {
             'client_secret': {'write_only': True},
-            'bearer_token': {'write_only': True},
             'app_secret': {'write_only': True},
             'page_access_token': {'write_only': True},
         }
