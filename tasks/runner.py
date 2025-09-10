@@ -135,20 +135,20 @@ def execute_task(task) -> Dict[str, Any]:
         elif task.provider == 'twitter' and (social_cfg or account):
             consumer_key = getattr(social_cfg, 'client_id', '') or None
             consumer_secret = getattr(social_cfg, 'client_secret', '') or None
-            # 账号级（OAuth1 用户上下文）
+            # 优先使用 OAuth2（bearer）；否则回退 OAuth1（用户上下文）
             has_oauth1 = bool(account and account.get_access_token() and account.get_refresh_token())
             bearer_cfg = getattr(social_cfg, 'bearer_token', None)
-            if has_oauth1 or bearer_cfg:
-                if has_oauth1:
+            if bearer_cfg or has_oauth1:
+                if bearer_cfg:
+                    tw = TwitterClient(
+                        bearer_token=bearer_cfg,
+                    )
+                else:
                     tw = TwitterClient(
                         consumer_key=consumer_key,
                         consumer_secret=consumer_secret,
                         access_token=account.get_access_token(),
                         access_token_secret=account.get_refresh_token(),
-                    )
-                else:
-                    tw = TwitterClient(
-                        bearer_token=bearer_cfg,
                     )
                 # 捕获平台限速信息（只读调用，不改变任务行为）——放在幂等检查之前保证能记录
                 try:
@@ -188,7 +188,7 @@ def execute_task(task) -> Dict[str, Any]:
             elif task.type == 'reply_message':
                 reply_to = (task.payload_template or {}).get('tweet_id')
                 text = (task.payload_template or {}).get('text', '')
-                if reply_to and bearer:
+                if reply_to and (bearer_cfg or has_oauth1):
                     try:
                         response['tweet_reply'] = tw.reply_tweet(reply_to_tweet_id=reply_to, text=text)
                     except Exception as _e:
@@ -260,9 +260,10 @@ def execute_task(task) -> Dict[str, Any]:
                         placeholder = '{' + str(var) + '}'
                         value = str(payload.get(var, ''))
                         system_prompt = system_prompt.replace(placeholder, value)
-                    # 关键词过滤（基于文本源）
-                    if not _match_keywords(base_text):
-                        raise Exception('keyword_filter_blocked')
+                    # 关键词过滤（基于文本源）——发布贴文不做拦截
+                    if task.type != 'post':
+                        if not _match_keywords(base_text):
+                            raise Exception('keyword_filter_blocked')
                     messages = [
                         {'role': 'system', 'content': system_prompt},
                         {'role': 'user', 'content': base_text or f'请根据类型 {task.type} 与平台 {task.provider} 生成一句适合发布或回复的中文内容。'}
@@ -373,8 +374,10 @@ def generate_ai_preview(task) -> Dict[str, Any]:
                 return any((w in text_l) for w in include if w)
         return any((w in text_l) for w in include if w)
 
-    if not _match_keywords(base_text):
-        return {'content': '', 'blocked': True, 'reason': 'keyword_filter_blocked'}
+    # 发帖不做关键词拦截，其它场景保留
+    if task.type != 'post':
+        if not _match_keywords(base_text):
+            return {'content': '', 'blocked': True, 'reason': 'keyword_filter_blocked'}
 
     if not (ai_cfg and ai_cfg.api_key):
         return {'content': '', 'blocked': False, 'reason': 'no_ai_config'}

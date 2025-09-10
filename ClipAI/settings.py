@@ -237,7 +237,7 @@ ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
 WEBHOOKS_ENABLED = (os.getenv('WEBHOOKS_ENABLED', 'false').lower() == 'true')
 
 # 当无平台账号但已配置 AI 时，是否启用“AI+Faker 回退”
-AI_FAKE_FALLBACK_ENABLED = (os.getenv('AI_FAKE_FALLBACK_ENABLED', 'true').lower() == 'true')
+AI_FAKE_FALLBACK_ENABLED = (os.getenv('AI_FAKE_FALLBACK_ENABLED', 'false').lower() == 'false')
 
 # Rate limit enforcement (no DB changes)
 RATE_LIMIT_ENFORCE_SKIP = (os.getenv('RATE_LIMIT_ENFORCE_SKIP', 'true').lower() == 'true')
