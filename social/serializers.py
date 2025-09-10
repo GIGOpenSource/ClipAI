@@ -7,12 +7,12 @@ class SocialAccountSerializer(serializers.ModelSerializer):
     access_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
     refresh_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
     has_access_token = serializers.SerializerMethodField(read_only=True)
-    # # 输出时将 owner 作为对象返回
-    # class OwnerBriefSerializer(serializers.ModelSerializer):
-    #     class Meta:
-    #         model = get_user_model()
-    #         fields = ['id', 'username', 'email', 'first_name', 'last_name']
-    # owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
+    # 输出时将 owner 作为对象返回
+    class OwnerBriefSerializer(serializers.ModelSerializer):
+        class Meta:
+            model = get_user_model()
+            fields = ['id', 'username', 'email', 'first_name', 'last_name']
+    owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
 
     class Meta:
         model = SocialAccount
