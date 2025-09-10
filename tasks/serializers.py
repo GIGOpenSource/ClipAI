@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import ScheduledTask, TaskRun
+from .models import ScheduledTask, TaskRun, Tag, TagTemplate
 from social.models import SocialConfig
 from ai.models import AIConfig
 from keywords.models import KeywordConfig
@@ -18,6 +18,9 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
     ai_config = serializers.SerializerMethodField()
     keyword_config = serializers.SerializerMethodField()
     prompt_config = serializers.SerializerMethodField()
+    tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
+    tag_template = serializers.PrimaryKeyRelatedField(queryset=TagTemplate.objects.all(), required=False, allow_null=True)
+    tag_template_detail = serializers.SerializerMethodField()
     class Meta:
         model = ScheduledTask
         fields = [
@@ -27,7 +30,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'recurrence_type', 'interval_value', 'time_of_day', 'weekday_mask', 'day_of_month', 'timezone', 'start_at', 'end_at', 'cron_expr',
             'enabled',
             'next_run_at', 'last_run_at', 'status', 'max_retries', 'rate_limit_hint',
-            'payload_template', 'created_at', 'updated_at'
+            'payload_template', 'tags', 'tag_template', 'tag_template_detail', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -116,6 +119,27 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'enabled': cfg.enabled,
         }
 
+    def get_tag_template_detail(self, obj):
+        tpl = getattr(obj, 'tag_template', None)
+        if not tpl:
+            return None
+        return {
+            'id': tpl.id,
+            'name': tpl.name,
+            'owner': tpl.owner_id,
+            'tags': [t.id for t in tpl.tags.all()],
+        }
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        tpl = attrs.get('tag_template', getattr(self.instance, 'tag_template', None))
+        if tpl and user and user.is_authenticated and not user.is_staff:
+            if tpl.owner_id != user.id:
+                raise serializers.ValidationError('只能选择你自己的标签模板')
+        return attrs
+
 
 class TaskRunSerializer(serializers.ModelSerializer):
     scheduled_task_detail = ScheduledTaskSerializer(source='scheduled_task', read_only=True)
@@ -132,5 +156,40 @@ class TaskRunSerializer(serializers.ModelSerializer):
             'request_dump', 'response_dump', 'affected_ids'
         ]
         read_only_fields = fields
+
+
+class TagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tag
+        fields = ['id', 'name', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class TagTemplateSerializer(serializers.ModelSerializer):
+    class OwnerBriefSerializer(serializers.ModelSerializer):
+        class Meta:
+            model = get_user_model()
+            fields = ['id', 'username']
+    owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
+    tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
+
+    class Meta:
+        model = TagTemplate
+        fields = ['id', 'name', 'owner', 'owner_detail', 'tags', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def create(self, validated_data):
+        tags = validated_data.pop('tags', [])
+        inst = super().create(validated_data)
+        if tags:
+            inst.tags.set(tags)
+        return inst
+
+    def update(self, instance, validated_data):
+        tags = validated_data.pop('tags', None)
+        inst = super().update(instance, validated_data)
+        if tags is not None:
+            inst.tags.set(tags)
+        return inst
 
 

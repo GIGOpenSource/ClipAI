@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from .models import ScheduledTask, TaskRun, SocialPost
+from .models import ScheduledTask, TaskRun, SocialPost, Tag, TagTemplate
 from social.models import SocialConfig
 from ai.models import AIConfig
 from keywords.models import KeywordConfig
@@ -12,6 +12,11 @@ class ScheduledTaskAdminForm(forms.ModelForm):
         queryset=SocialConfig.objects.all().order_by('provider', 'name'),
         required=False,
         label='社交配置'
+    )
+    tag_template = forms.ModelChoiceField(
+        queryset=TagTemplate.objects.all().order_by('name'),
+        required=False,
+        label='标签模板'
     )
     ai_config = forms.ModelChoiceField(
         queryset=AIConfig.objects.all().order_by('-is_default', '-priority', 'name'),
@@ -46,6 +51,8 @@ class ScheduledTaskAdminForm(forms.ModelForm):
                 self.fields['keyword_config'].initial = KeywordConfig.objects.filter(id=inst.keyword_config_id).first()
             if inst.prompt_config_id:
                 self.fields['prompt_config'].initial = PromptConfig.objects.filter(id=inst.prompt_config_id).first()
+            if getattr(inst, 'tag_template_id', None):
+                self.fields['tag_template'].initial = TagTemplate.objects.filter(id=inst.tag_template_id).first()
 
     def save(self, commit=True):
         inst: ScheduledTask = super().save(commit=False)
@@ -53,10 +60,12 @@ class ScheduledTaskAdminForm(forms.ModelForm):
         ai = self.cleaned_data.get('ai_config')
         kw = self.cleaned_data.get('keyword_config')
         pr = self.cleaned_data.get('prompt_config')
+        tt = self.cleaned_data.get('tag_template')
         inst.social_config_id = sc.pk if sc else None
         inst.ai_config_id = ai.pk if ai else None
         inst.keyword_config_id = kw.pk if kw else None
         inst.prompt_config_id = pr.pk if pr else None
+        inst.tag_template = tt
         if commit:
             inst.save()
             self.save_m2m()
@@ -69,6 +78,7 @@ class ScheduledTaskAdmin(admin.ModelAdmin):
     list_display = ('id','owner', 'type', 'provider', 'enabled', 'recurrence_type', 'interval_value', 'time_of_day', 'next_run_at', 'last_run_at', 'status')
     list_filter = ('provider', 'type', 'enabled', 'recurrence_type')
     search_fields = ('owner__username',)
+    filter_horizontal = ('tags',)
 
 
 @admin.register(TaskRun)
@@ -85,3 +95,16 @@ class SocialPostAdmin(admin.ModelAdmin):
     list_display = ('id','provider','external_id','owner','posted_at','scheduled_task','task_run')
     list_filter = ('provider',)
     search_fields = ('external_id','owner__username')
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ('id','name','created_at')
+    search_fields = ('name',)
+
+
+@admin.register(TagTemplate)
+class TagTemplateAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'owner', 'created_at')
+    list_filter = ('owner',)
+    search_fields = ('name', 'owner__username')

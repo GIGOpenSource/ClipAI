@@ -16,6 +16,8 @@ class ScheduledTask(models.Model):
     ai_config_id = models.IntegerField(null=True, blank=True, help_text='覆盖用AI配置ID（可选）')
     keyword_config_id = models.IntegerField(null=True, blank=True, help_text='关键词配置ID（可选）')
     prompt_config_id = models.IntegerField(null=True, blank=True, help_text='提示词配置ID（可选）')
+    # 话题/标签（多选）
+    # 使用独立 Tag 模型，多对多绑定；用于自动拼接 #tags
     # Figma 调度字段
     RECURRENCE_CHOICES = [
         ('once', '单次'),
@@ -113,3 +115,38 @@ class SocialPost(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}:{self.external_id}"
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self) -> str:
+        return self.name
+
+
+# Add M2M after Tag defined
+ScheduledTask.add_to_class('tags', models.ManyToManyField(Tag, blank=True, related_name='tasks', help_text='自动拼接的标签，如 #AI #新品'))
+
+
+class TagTemplate(models.Model):
+    """Reusable tag set owned by a user."""
+    name = models.CharField(max_length=100)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tag_templates')
+    tags = models.ManyToManyField(Tag, blank=True, related_name='templates')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('owner', 'name')
+        ordering = ['owner_id', 'name']
+
+    def __str__(self) -> str:
+        return f"{self.owner_id}:{self.name}"
+
+
+# Link ScheduledTask to TagTemplate (optional)
+ScheduledTask.add_to_class('tag_template', models.ForeignKey('TagTemplate', null=True, blank=True, on_delete=models.SET_NULL, related_name='scheduled_tasks', help_text='可选：选择一个标签模板来自动附加标签'))

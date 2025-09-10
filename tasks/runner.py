@@ -117,6 +117,21 @@ def execute_task(task) -> Dict[str, Any]:
     response: Dict[str, Any] = {'task_type': task.type, 'provider': task.provider}
     # Prepare content to post: prefer AI-generated for post tasks
     text_to_post = (task.payload_template or {}).get('text', '')
+    # Append tags (#tag) if any (prefer tag_template if set)
+    try:
+        tag_names = []
+        tpl = getattr(task, 'tag_template', None)
+        if tpl:
+            tag_names = [t.name for t in tpl.tags.all()][:5]
+        else:
+            tag_names = [t.name for t in task.tags.all()][:5]
+        if tag_names:
+            tail = ' ' + ' '.join('#' + n.lstrip('#') for n in tag_names)
+            if text_to_post:
+                text_to_post = (text_to_post + tail).strip()
+            # AI 生成后也会覆盖 text_to_post，再补一遍在下方
+    except Exception:
+        pass
     if task.type == 'post':
         if ai_cfg and ai_cfg.api_key:
             try:
@@ -140,6 +155,18 @@ def execute_task(task) -> Dict[str, Any]:
                 ai_text = ai_res.get('content') or ''
                 if ai_text:
                     text_to_post = ai_text
+                    # re-append tags after AI text
+                    try:
+                        tag_names = []
+                        tpl = getattr(task, 'tag_template', None)
+                        if tpl:
+                            tag_names = [t.name for t in tpl.tags.all()][:5]
+                        else:
+                            tag_names = [t.name for t in task.tags.all()][:5]
+                        if tag_names:
+                            text_to_post = (text_to_post + ' ' + ' '.join('#' + n.lstrip('#') for n in tag_names)).strip()
+                    except Exception:
+                        pass
                     response['ai_generated'] = True
                     response['ai_meta'] = {
                         'latency_ms': ai_res.get('latency_ms'),

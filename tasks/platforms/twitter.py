@@ -4,6 +4,7 @@ from django.conf import settings
 import urllib.parse
 from keywords.models import KeywordConfig
 from ..clients import TwitterClient
+from ..models import SocialPost
 from django.core.cache import cache
 
 
@@ -143,6 +144,14 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
                             data = (res or {}).get('data') or []
                             if data:
                                 reply_to = data[0].get('id')
+            except Exception:
+                pass
+        if not reply_to:
+            # Fallback: reply to latest of my own posts
+            try:
+                post = SocialPost.objects.filter(owner=task.owner, provider='twitter').order_by('-posted_at').first()
+                if post and post.external_id:
+                    reply_to = post.external_id
             except Exception:
                 pass
         if reply_to:

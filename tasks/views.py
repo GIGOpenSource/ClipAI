@@ -5,8 +5,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
-from .models import ScheduledTask, TaskRun
-from .serializers import ScheduledTaskSerializer, TaskRunSerializer
+from .models import ScheduledTask, TaskRun, Tag, TagTemplate
+from .serializers import ScheduledTaskSerializer, TaskRunSerializer, TagSerializer, TagTemplateSerializer
 from .tasks import execute_scheduled_task
 from .runner import execute_task, generate_ai_preview
 
@@ -155,4 +155,44 @@ class TaskRunViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.
             qs = qs.filter(scheduled_task_id=task_id)
         return qs
 
-# Create your views here.
+class TagViewSet(viewsets.ModelViewSet):
+    queryset = Tag.objects.all().order_by('name')
+    serializer_class = TagSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return qs
+
+    def perform_create(self, serializer):
+        # 普通用户允许创建标签（全局共享），如需限制可改为管理员专属
+        serializer.save()
+
+
+class TagTemplateViewSet(viewsets.ModelViewSet):
+    queryset = TagTemplate.objects.all().order_by('name')
+    serializer_class = TagTemplateSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # 管理员可查看全部，可用 ?owner_id= 过滤；普通用户仅看自己的
+        if self.request.user and self.request.user.is_authenticated and self.request.user.is_staff:
+            owner_id = self.request.query_params.get('owner_id')
+            if owner_id:
+                qs = qs.filter(owner_id=owner_id)
+        else:
+            qs = qs.filter(owner_id=self.request.user.id if self.request.user and self.request.user.is_authenticated else -1)
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return qs
+
+    def perform_create(self, serializer):
+        if self.request.user and self.request.user.is_authenticated and not self.request.user.is_staff:
+            serializer.save(owner=self.request.user)
+        else:
+            serializer.save()
