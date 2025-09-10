@@ -45,7 +45,7 @@ class SocialAccountInline(admin.TabularInline):
 
 @admin.register(SocialAccount)
 class SocialAccountAdmin(admin.ModelAdmin):
-    list_display = ('owner', 'provider', 'external_username', 'status', 'health_status', 'expires_at', 'last_checked_at', 'updated_at')
+    list_display = ('id','owner', 'provider', 'external_username', 'status', 'health_status', 'expires_at', 'last_checked_at', 'updated_at')
     list_filter = ('provider', 'status', 'health_status')
     search_fields = ('owner__username', 'external_username', 'external_user_id')
 
