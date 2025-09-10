@@ -25,7 +25,7 @@ class FacebookClient:
 
 
 class TwitterClient:
-    API_BASE = 'https://api.twitter.com/2'
+    API_BASE = 'https://api.x.com/2'
 
     def __init__(
         self,

@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
-from .serializers import UserSerializer, GroupSerializer, PermissionSerializer, AuditLogSerializer, SetPasswordSerializer, LoginSerializer, RegistrationSerializer
+from .serializers import UserSerializer, GroupSerializer, PermissionSerializer, AuditLogSerializer, SetPasswordSerializer, ChangePasswordSerializer, LoginSerializer, RegistrationSerializer
 from .permissions import IsStaffUser
 from .models import AuditLog
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
@@ -13,6 +13,7 @@ from django.contrib.auth import authenticate, login
 from django.middleware.csrf import get_token
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 
 
 @extend_schema_view(
@@ -70,7 +71,23 @@ class UserViewSet(mixins.ListModelMixin,
         serializer.is_valid(raise_exception=True)
         user.set_password(serializer.validated_data['password'])
         user.save(update_fields=['password'])
-        return Response({'status': 'password_set'})
+        # Blacklist all tokens for this user (force re-login)
+        try:
+            tokens = OutstandingToken.objects.filter(user=user)
+            for t in tokens:
+                BlacklistedToken.objects.get_or_create(token=t)
+        except Exception:
+            pass
+        # End any active sessions for this user
+        try:
+            from django.contrib.sessions.models import Session
+            for s in Session.objects.all():
+                data = s.get_decoded()
+                if str(user.id) == str(data.get('_auth_user_id')):
+                    s.delete()
+        except Exception:
+            pass
+        return Response({'status': 'password_set_and_tokens_revoked'})
 
 
 @extend_schema_view(
@@ -202,3 +219,59 @@ class RegisterAPIView(APIView):
             'refresh': str(refresh),
             'user': UserSerializer(user).data
         }, status=201)
+
+
+class ChangePasswordAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary='修改当前登录用户密码并使旧 token 失效', tags=['认证'], request=ChangePasswordSerializer,
+                   responses={200: OpenApiResponse(description='修改成功，返回新 JWT')})
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        if not user.check_password(serializer.validated_data['old_password']):
+            return Response({'detail': '旧密码不正确'}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(serializer.validated_data['new_password'])
+        user.save(update_fields=['password'])
+        # Blacklist all existing tokens
+        try:
+            tokens = OutstandingToken.objects.filter(user=user)
+            for t in tokens:
+                BlacklistedToken.objects.get_or_create(token=t)
+        except Exception:
+            pass
+        # Issue new tokens
+        refresh = RefreshToken.for_user(user)
+        return Response({'status': 'ok', 'access': str(refresh.access_token), 'refresh': str(refresh)})
+
+
+class LogoutAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary='注销当前会话（拉黑当前 refresh）', tags=['认证'])
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'detail': '缺少 refresh'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except Exception:
+            return Response({'detail': '无效的 refresh token'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'status': 'logged_out'})
+
+
+class LogoutAllAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary='注销所有会话（拉黑所有 refresh）', tags=['认证'])
+    def post(self, request):
+        user = request.user
+        try:
+            tokens = OutstandingToken.objects.filter(user=user)
+            for t in tokens:
+                BlacklistedToken.objects.get_or_create(token=t)
+        except Exception:
+            pass
+        return Response({'status': 'logged_out_all'})

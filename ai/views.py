@@ -34,6 +34,7 @@ class AIConfigViewSet(viewsets.ModelViewSet):
             return qs.filter(created_by=user)
         return qs.none()
 
+
     @extend_schema(summary='获取默认配置', tags=['AI配置'])
     @action(detail=False, methods=['get'])
     def default(self, request):

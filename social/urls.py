@@ -2,10 +2,11 @@ from django.urls import path, include
 from django.conf import settings
 from .views import WebhookReceiver, SocialAccountHealthView, TwitterOAuthStart, TwitterOAuthCallback, TwitterMeOAuth1, FacebookOAuthStart, FacebookOAuthCallback, InstagramOAuthStart, InstagramOAuthCallback
 from rest_framework.routers import DefaultRouter
-from .views import SocialConfigViewSet
+from .views import SocialConfigViewSet, SocialAccountViewSet
 
 router = DefaultRouter()
 router.register(r'configs', SocialConfigViewSet)
+router.register(r'accounts', SocialAccountViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

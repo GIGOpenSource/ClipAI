@@ -1,4 +1,59 @@
 from rest_framework import serializers
+from .models import SocialConfig, SocialAccount
+
+
+class SocialConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SocialConfig
+        fields = '__all__'
+
+
+class SocialAccountSerializer(serializers.ModelSerializer):
+    access_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    refresh_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    has_access_token = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = SocialAccount
+        fields = [
+            'id', 'owner', 'provider', 'config',
+            'external_user_id', 'external_username',
+            'access_token', 'refresh_token', 'has_access_token',
+            'expires_at', 'scopes', 'status',
+            'health_status', 'last_checked_at', 'ban_reason', 'error_code', 'failed_checks_count',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at', 'last_checked_at']
+
+    def get_has_access_token(self, obj):
+        try:
+            return bool(obj.access_token)
+        except Exception:
+            return False
+
+    def create(self, validated_data):
+        access_token = validated_data.pop('access_token', None)
+        refresh_token = validated_data.pop('refresh_token', None)
+        account = super().create(validated_data)
+        if access_token is not None:
+            account.set_access_token(access_token)
+        if refresh_token is not None:
+            account.set_refresh_token(refresh_token)
+        account.save()
+        return account
+
+    def update(self, instance, validated_data):
+        access_token = validated_data.pop('access_token', None)
+        refresh_token = validated_data.pop('refresh_token', None)
+        account = super().update(instance, validated_data)
+        if access_token is not None:
+            account.set_access_token(access_token)
+        if refresh_token is not None:
+            account.set_refresh_token(refresh_token)
+        account.save()
+        return account
+
+from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import SocialConfig
 

@@ -33,6 +33,11 @@ class SetPasswordSerializer(serializers.Serializer):
     password = serializers.CharField(min_length=6, max_length=128, help_text='新密码，至少 6 位')
 
 
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=6, max_length=128)
+
+
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(help_text='管理员用户名')
     password = serializers.CharField(write_only=True, help_text='密码')

@@ -42,7 +42,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
 from .models import SocialConfig, SocialAccount
-from .serializers import SocialConfigSerializer
+from .serializers import SocialConfigSerializer, SocialAccountSerializer
 
 
 @extend_schema_view(
@@ -288,6 +288,43 @@ class SocialAccountHealthView(APIView):
         from .tasks import check_social_accounts_health
         check_social_accounts_health.delay()
         return Response({'status': 'queued'})
+
+
+@extend_schema_view(
+    list=extend_schema(summary='社交账号列表', tags=['社交账户']),
+    retrieve=extend_schema(summary='社交账号详情', tags=['社交账户']),
+    create=extend_schema(summary='创建社交账号', tags=['社交账户']),
+    update=extend_schema(summary='更新社交账号', tags=['社交账户']),
+    partial_update=extend_schema(summary='部分更新社交账号', tags=['社交账户']),
+    destroy=extend_schema(summary='删除社交账号', tags=['社交账户'])
+)
+class SocialAccountViewSet(viewsets.ModelViewSet):
+    queryset = SocialAccount.objects.all().order_by('-updated_at')
+    serializer_class = SocialAccountSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user and user.is_authenticated and user.is_staff:
+            user_id = self.request.query_params.get('user_id')
+            if user_id:
+                qs = qs.filter(owner_id=user_id)
+        else:
+            uid = user.id if user and user.is_authenticated else None
+            qs = qs.filter(owner_id=uid) if uid else qs.none()
+        provider = self.request.query_params.get('provider')
+        if provider:
+            qs = qs.filter(provider=provider)
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        # 普通用户只能创建归属于自己的；管理员可指定 owner
+        if user and user.is_authenticated and not user.is_staff:
+            serializer.save(owner=user)
+        else:
+            serializer.save()
 
 # ---- Twitter OAuth2 (PKCE) minimal flow ----
 
