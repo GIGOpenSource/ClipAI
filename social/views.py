@@ -337,6 +337,24 @@ class SocialAccountViewSet(viewsets.ModelViewSet):
         else:
             serializer.save()
 
+    @extend_schema(summary='社交账号下拉（按平台，可全量）', tags=['社交账户'])
+    @action(detail=False, methods=['get'])
+    def picker(self, request):
+        # 返回全部 Twitter 账号（忽略管理员/多租户与启用状态）
+        qs = SocialAccount.objects.filter(provider='twitter').order_by('-updated_at')
+        data = [
+            {
+                'id': acc.id,
+                'owner': acc.owner_id,
+                'provider': acc.provider,
+                'external_user_id': acc.external_user_id,
+                'external_username': acc.external_username,
+                'status': acc.status,
+            }
+            for acc in qs[:500]
+        ]
+        return Response(data)
+
 # ---- Twitter OAuth2 (PKCE) minimal flow ----
 
 class TwitterOAuthStart(APIView):

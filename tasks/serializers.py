@@ -26,7 +26,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
     keyword_config = serializers.SerializerMethodField()
     prompt_config = serializers.SerializerMethodField()
     tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
-    runner_accounts = serializers.PrimaryKeyRelatedField(source='runner_accounts', queryset=SocialAccount.objects.all(), many=True, required=False, allow_null=True)
+    # 移除任务级 runner_accounts（转移到 FollowTarget）
     class Meta:
         model = ScheduledTask
         fields = [
@@ -36,7 +36,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'recurrence_type', 'interval_value', 'time_of_day', 'weekday_mask', 'day_of_month', 'timezone', 'start_at', 'end_at', 'cron_expr',
             'enabled',
             'next_run_at', 'last_run_at', 'status', 'max_retries', 'rate_limit_hint',
-            'payload_template', 'tags', 'runner_accounts', 'created_at', 'updated_at'
+            'payload_template', 'tags', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -78,6 +78,8 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             has_media = bool(payload.get('image_url') or payload.get('video_url'))
             ensure(has_media, 'Instagram 发帖需要提供 image_url 或 video_url')
 
+        # 不再接收任务级 runner_accounts
+
         # payload_template.text 默认值（按任务类型）
         payload = attrs.get('payload_template', getattr(instance, 'payload_template', {})) or {}
         if not isinstance(payload, dict):
@@ -90,6 +92,16 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         attrs['payload_template'] = payload
 
         return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        try:
+            if (getattr(instance, 'type', '') or '') != 'follow':
+                # 非关注任务不展示 runner_accounts 字段
+                data.pop('runner_accounts', None)
+        except Exception:
+            pass
+        return data
 
     def _as_dict(self, obj, fields):
         return {k: getattr(obj, k) for k in fields}
@@ -175,6 +187,8 @@ class TagSerializer(serializers.ModelSerializer):
 
 
 class FollowTargetSerializer(serializers.ModelSerializer):
+    owner = serializers.PrimaryKeyRelatedField(queryset=get_user_model().objects.all(), required=False)
+    provider = serializers.CharField(required=False, default='twitter')
     class OwnerBriefSerializer(serializers.ModelSerializer):
         class Meta:
             model = get_user_model()
@@ -182,19 +196,37 @@ class FollowTargetSerializer(serializers.ModelSerializer):
     owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
     last_status = serializers.SerializerMethodField()
     last_executed_at = serializers.SerializerMethodField()
+    runner_accounts = serializers.PrimaryKeyRelatedField(queryset=SocialAccount.objects.all(), many=True, required=False)
 
     class Meta:
         model = FollowTarget
         fields = [
             'id', 'owner', 'owner_detail', 'provider', 'external_user_id', 'username',
             'display_name', 'note', 'source', 'enabled', 'created_at', 'updated_at',
-            'last_status', 'last_executed_at'
+            'last_status', 'last_executed_at', 'runner_accounts'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 所有人都可以选择任意 Twitter 账号（不限制状态）
+        try:
+            self.fields['runner_accounts'].queryset = SocialAccount.objects.filter(provider='twitter')
+        except Exception:
+            pass
+
     def validate(self, attrs):
-        provider = (attrs.get('provider') or '').lower()
+        request = self.context.get('request') if isinstance(self.context, dict) else None
+        provider = (attrs.get('provider') or getattr(getattr(self, 'instance', None) or object(), 'provider', None) or 'twitter').lower()
         attrs['provider'] = provider
+        if provider != 'twitter':
+            raise serializers.ValidationError('关注目标目前仅支持 twitter')
+        # 非管理员强制归属当前用户；管理员可指定 owner
+        if request and request.user and request.user.is_authenticated and not request.user.is_staff:
+            attrs['owner'] = request.user
+        elif 'owner' not in attrs and request and request.user and request.user.is_authenticated:
+            # 若未显式提供 owner，也默认当前用户
+            attrs['owner'] = request.user
         return attrs
 
     def get_last_status(self, obj: FollowTarget):

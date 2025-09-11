@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
+from social.models import SocialAccount
 from .models import AIConfig
 from .serializers import AIConfigSerializer, AIConfigPickerSerializer
 
@@ -68,7 +69,15 @@ class AIConfigViewSet(viewsets.ModelViewSet):
     @extend_schema(summary='AI 账号下拉（仅 id 与 bot 文案）', tags=['AI配置'])
     @action(detail=False, methods=['get'])
     def picker(self, request):
-        qs = self.get_queryset().filter(enabled=True)
+        # 下拉不做多租户限制；
+        # - 无 provider 参数：默认返回“推特平台”相关（按名称包含 twitter），不区分启用状态
+        # - 有 provider 参数：按名称包含 provider 且仅返回启用的
+        provider = (request.query_params.get('provider') or '').strip().lower()
+        if provider:
+            qs = SocialAccount.objects.filter(enabled=True, provider=provider)
+        else:
+            qs = SocialAccount.objects.filter(provider='twitter')
+        print(qs, SocialAccount.objects.all())
         data = AIConfigPickerSerializer(qs, many=True).data
         return Response(data)
 

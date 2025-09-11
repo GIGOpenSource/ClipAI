@@ -8,6 +8,7 @@ class SocialConfig(models.Model):
         ('twitter', 'Twitter'),
         ('facebook', 'Facebook'),
         ('instagram', 'Instagram'),
+        ('threads', 'Threads'),
     ]
 
     # 通用

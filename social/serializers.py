@@ -127,6 +127,10 @@ class SocialConfigSerializer(serializers.ModelSerializer):
             for key in ['app_id', 'app_secret']:
                 if not attrs.get(key) and not (self.instance and getattr(self.instance, key)):
                     raise serializers.ValidationError(f'Instagram 需要 {key}')
+        if provider == 'threads':
+            for key in ['app_id', 'app_secret']:
+                if not attrs.get(key) and not (self.instance and getattr(self.instance, key)):
+                    raise serializers.ValidationError(f'Threads 需要 {key}')
         return attrs
 
     def create(self, validated_data):
