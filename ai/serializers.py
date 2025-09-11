@@ -3,23 +3,16 @@ from .models import AIConfig
 
 
 class AIConfigSerializer(serializers.ModelSerializer):
-    api_key = serializers.CharField(write_only=True, help_text='密钥仅写入时提供，读取不返回')
-    api_key_masked = serializers.SerializerMethodField(help_text='掩码后的密钥，形如 sk-****abcd')
+    api_key = serializers.CharField(help_text='密钥明文返回')
 
     class Meta:
         model = AIConfig
         fields = [
             'id', 'name', 'provider', 'model', 'enabled', 'is_default', 'priority',
-            'api_key', 'api_key_masked', 'base_url', 'region', 'api_version', 'organization_id',
+            'api_key', 'base_url', 'region', 'api_version', 'organization_id',
             'created_at', 'updated_at', 'created_by'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by']
-
-    def get_api_key_masked(self, obj: AIConfig):
-        if not obj.api_key:
-            return ''
-        tail = obj.api_key[-4:]
-        return f"***{tail}"
 
     def validate(self, attrs):
         provider = attrs.get('provider', getattr(self.instance, 'provider', None))
