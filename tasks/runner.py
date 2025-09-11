@@ -71,8 +71,9 @@ def _idem_seen_before(key: str) -> bool:
 def execute_task(task) -> Dict[str, Any]:
     started_at = timezone.now()
     owner_id = task.owner_id
+    provider = (task.provider or '').strip().lower()
     # Select SocialConfig
-    social_qs = SocialConfig.objects.filter(provider=task.provider, enabled=True)
+    social_qs = SocialConfig.objects.filter(provider=provider, enabled=True)
     if owner_id:
         social_qs = social_qs.filter(owner_id=owner_id)
     if task.social_config_id:
@@ -93,8 +94,8 @@ def execute_task(task) -> Dict[str, Any]:
         kw_qs = KeywordConfig.objects.filter(enabled=True)
         if owner_id:
             kw_qs = kw_qs.filter(owner_id=owner_id)
-        if task.provider:
-            kw_qs = kw_qs.filter(provider__in=['', task.provider])
+        if provider:
+            kw_qs = kw_qs.filter(provider__in=['', provider])
         kw_cfg = kw_qs.first()
 
     # PromptConfig (optional)
@@ -106,7 +107,7 @@ def execute_task(task) -> Dict[str, Any]:
 
     # Prefer user-bound SocialAccount for runtime tokens
     account = SocialAccount.objects.filter(
-        owner_id=task.owner_id, provider=task.provider, status='active'
+        owner_id=task.owner_id, provider=provider, status='active'
     ).order_by('-updated_at').first()
 
     request_dump = {
@@ -118,7 +119,7 @@ def execute_task(task) -> Dict[str, Any]:
         'payload_template': task.payload_template,
     }
 
-    response: Dict[str, Any] = {'task_type': task.type, 'provider': task.provider}
+    response: Dict[str, Any] = {'task_type': task.type, 'provider': provider}
     # Prepare content to post: prefer AI-generated for post tasks
     text_to_post = (task.payload_template or {}).get('text', '')
     # Append tags (#tag) if any (use task.tags only)
@@ -185,7 +186,7 @@ def execute_task(task) -> Dict[str, Any]:
             if seconds and seconds > 0:
                 cache.set(_block_key(oid, prov, aid), 1, timeout=seconds)
 
-        if _is_blocked(task.owner_id, task.provider, getattr(account, 'id', None)):
+        if _is_blocked(task.owner_id, provider, getattr(account, 'id', None)):
             response['skipped'] = 'rate_limit_blocked'
             response['rate_limited'] = True
             raise Exception('Rate limit blocked - skipped')
@@ -198,20 +199,20 @@ def execute_task(task) -> Dict[str, Any]:
                 raise Exception('Skipped duplicate by idempotency key')
 
         def rate_guard():
-            if not _rate_allow(task.owner_id, task.provider, getattr(account, 'id', None)):
+            if not _rate_allow(task.owner_id, provider, getattr(account, 'id', None)):
                 response['skipped'] = 'rate_limited'
                 response['rate_limited'] = True
                 raise Exception('Rate limited - skipped')
 
-        if task.provider == 'facebook':
+        if provider == 'facebook':
             fb_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
-        elif task.provider == 'twitter' and task.type != 'follow':
+        elif provider == 'twitter' and task.type != 'follow':
             tw_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
-        elif task.provider == 'instagram':
+        elif provider == 'instagram':
             ig_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
-        elif task.provider == 'threads':
+        elif provider == 'threads':
             th_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
-        elif task.provider == 'twitter' and task.type == 'follow':
+        elif provider == 'twitter' and task.type == 'follow':
             # Handle follow flow
             try:
                 # Select targets
@@ -220,7 +221,7 @@ def execute_task(task) -> Dict[str, Any]:
                     daily_cap = int((task.payload_template or {}).get('daily_cap') or 0) or None
                 except Exception:
                     daily_cap = None
-                if not _enforce_daily_cap(task.owner_id, task.provider, daily_cap):
+                if not _enforce_daily_cap(task.owner_id, provider, daily_cap):
                     response['skipped'] = 'daily_cap_reached'
                     raise Exception('Daily cap reached')
 
@@ -249,14 +250,14 @@ def execute_task(task) -> Dict[str, Any]:
                         for acc in target_runner_accounts:
                             # 全局阻断检查（缓存）
                             try:
-                                if _is_blocked(task.owner_id, task.provider, getattr(acc, 'id', None)):
+                                if _is_blocked(task.owner_id, provider, getattr(acc, 'id', None)):
                                     FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='skipped', error_code='rate_limit_blocked')
                                     continue
                             except Exception:
                                 pass
 
                             # 本地速率限制（按 owner+provider+account）
-                            if not _rate_allow(task.owner_id, task.provider, getattr(acc, 'id', None)):
+                            if not _rate_allow(task.owner_id, provider, getattr(acc, 'id', None)):
                                 response['rate_limited'] = True
                                 FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='skipped', error_code='rate_limited')
                                 continue
@@ -322,7 +323,7 @@ def execute_task(task) -> Dict[str, Any]:
                                                 ttl = int(reset_at) - now_ts + 1
                                             if not ttl or ttl <= 0:
                                                 ttl = int(getattr(settings, 'RATE_LIMIT_DEFAULT_BACKOFF_SECONDS', 300))
-                                            cache.set(_rate_key(task.owner_id, task.provider, getattr(acc, 'id', None)), 1, timeout=ttl)
+                                            cache.set(_rate_key(task.owner_id, provider, getattr(acc, 'id', None)), 1, timeout=ttl)
                                             response['rate_limited'] = True
                                             response['rate_limit_blocked_seconds'] = ttl
                                 except Exception:
@@ -355,7 +356,7 @@ def execute_task(task) -> Dict[str, Any]:
         'success': success,
         'duration_ms': duration_ms,
         'owner_id': task.owner_id,
-        'provider': task.provider,
+        'provider': provider,
         'task_type': task.type,
         'sla_met': sla_met,
     }
