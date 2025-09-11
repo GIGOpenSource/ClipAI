@@ -95,6 +95,7 @@ class SocialPost(models.Model):
         ('twitter', 'Twitter'),
         ('facebook', 'Facebook'),
         ('instagram', 'Instagram'),
+        ('threads', 'Threads'),
     ]
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='social_posts')

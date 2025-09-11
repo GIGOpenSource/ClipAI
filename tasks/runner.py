@@ -10,7 +10,9 @@ from keywords.models import KeywordConfig
 from prompts.models import PromptConfig
  
 from .platforms.twitter import handle as tw_handle
-from .platforms.facebook_instagram import handle_facebook as fb_handle, handle_instagram as ig_handle
+from .platforms.facebook import handle as fb_handle
+from .platforms.instagram import handle as ig_handle
+from .platforms.threads import handle as th_handle
 from ai.client import OpenAICompatibleClient
 from django.conf import settings
 from social.models import SocialAccount
@@ -213,6 +215,8 @@ def execute_task(task) -> Dict[str, Any]:
             tw_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
         elif task.provider == 'instagram':
             ig_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
+        elif task.provider == 'threads':
+            th_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
     except Exception as exc:
         response['error'] = str(exc)
     finished_at = timezone.now()

@@ -129,3 +129,18 @@ class InstagramClient:
         resp.raise_for_status()
         return resp.json()
 
+
+class ThreadsClient:
+    GRAPH_BASE = 'https://graph.threads.net'
+
+    def __init__(self, api_version: str, access_token: str, user_id: str):
+        self.api_version = api_version or 'v1.0'
+        self.access_token = access_token
+        self.user_id = user_id
+
+    def post_text(self, text: str):
+        # Simplified Threads publish endpoint (subject to actual API capabilities)
+        url = f"{self.GRAPH_BASE}/{self.api_version}/{self.user_id}/posts"
+        resp = requests.post(url, data={'text': text, 'access_token': self.access_token}, timeout=20)
+        resp.raise_for_status()
+        return resp.json()

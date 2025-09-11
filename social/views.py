@@ -123,6 +123,8 @@ class SocialConfigViewSet(viewsets.ModelViewSet):
                 payload['scopes'] = ['public_profile', 'pages_read_engagement', 'pages_manage_posts']
             elif provider == 'instagram':
                 payload['scopes'] = ['user_profile', 'user_media']
+            elif provider == 'threads':
+                payload['scopes'] = ['threads_basic', 'threads_content_publish']
             else:
                 payload['scopes'] = []
         # 强制归属到当前用户，忽略传入的 owner/created_by
@@ -277,6 +279,10 @@ class SocialConfigViewSet(viewsets.ModelViewSet):
                 'required': ['app_id', 'app_secret'],
                 'optional': ['api_version', 'redirect_uris', 'scopes', 'ig_business_account_id']
             },
+            'threads': {
+                'required': ['app_id', 'app_secret'],
+                'optional': ['api_version', 'redirect_uris', 'scopes', 'user_id', 'page_access_token']
+            },
         }
         return Response(data)
 
@@ -343,13 +349,19 @@ class TwitterOAuthStart(APIView):
         redirect_uris = cfg.redirect_uris or []
         if not redirect_uris:
             return Response({'detail': 'Twitter 配置缺少 redirect_uris'}, status=400)
-        redirect_uri = redirect_uris[0]
+        # 支持 per-user 回调地址：当传入 use_user_callback=true 时，构造 /api/social/oauth/twitter/callback/<user_id>/
+        use_user_cb = request.query_params.get('use_user_callback') in {'1','true','yes'}
+        if use_user_cb and user_id:
+            host = request.build_absolute_uri('/')[:-1]
+            redirect_uri = host + f"/api/social/oauth/twitter/callback/{user_id}/"
+        else:
+            redirect_uri = redirect_uris[0]
         scopes = cfg.scopes or ['tweet.read', 'users.read']
         # PKCE
         code_verifier = base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip('=')
         code_challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).decode().rstrip('=')
         state = secrets.token_urlsafe(16)
-        cache.set(f'oauth2:tw:{state}', {'code_verifier': code_verifier, 'user_id': user_id, 'cfg_id': cfg.id}, timeout=900)
+        cache.set(f'oauth2:tw:{state}', {'code_verifier': code_verifier, 'user_id': user_id, 'cfg_id': cfg.id, 'redirect_uri': redirect_uri}, timeout=900)
         params = {
             'response_type': 'code',
             'client_id': cfg.client_id,
@@ -367,7 +379,7 @@ class TwitterOAuthCallback(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(summary='Twitter OAuth2 回调（换取用户 token 并绑定 SocialAccount）', tags=['社交账户'])
-    def get(self, request):
+    def get(self, request, user_id: int | None = None):
         from .models import SocialConfig, SocialAccount
         code = request.query_params.get('code')
         state = request.query_params.get('state')
@@ -378,11 +390,12 @@ class TwitterOAuthCallback(APIView):
             return Response({'detail': 'state 无效或已过期'}, status=400)
         cache.delete(f'oauth2:tw:{state}')
         code_verifier = ctx['code_verifier']
-        user_id = ctx.get('user_id')
+        # 优先使用 URL 参数中的 user_id（per-user 回调），其次取 state 里的 user_id
+        user_id = user_id or ctx.get('user_id')
         cfg = SocialConfig.objects.filter(id=ctx.get('cfg_id')).first()
         if not cfg:
             return Response({'detail': '配置不存在'}, status=400)
-        redirect_uri = (cfg.redirect_uris or [None])[0]
+        redirect_uri = ctx.get('redirect_uri') or (cfg.redirect_uris or [None])[0]
         if not redirect_uri:
             return Response({'detail': '配置缺少 redirect_uri'}, status=400)
 # Create your views here.
@@ -407,12 +420,17 @@ class FacebookOAuthStart(APIView):
         redirect_uris = cfg.redirect_uris or []
         if not redirect_uris:
             return Response({'detail': 'Facebook 配置缺少 redirect_uris'}, status=400)
-        redirect_uri = redirect_uris[0]
+        use_user_cb = request.query_params.get('use_user_callback') in {'1','true','yes'}
+        if use_user_cb and user_id:
+            host = request.build_absolute_uri('/')[:-1]
+            redirect_uri = host + f"/api/social/oauth/facebook/callback/{user_id}/"
+        else:
+            redirect_uri = redirect_uris[0]
         scopes = cfg.scopes or ['public_profile']
         api_ver = cfg.api_version or 'v19.0'
 
         state = secrets.token_urlsafe(16)
-        cache.set(f'oauth2:fb:{state}', {'user_id': user_id, 'cfg_id': cfg.id}, timeout=900)
+        cache.set(f'oauth2:fb:{state}', {'user_id': user_id, 'cfg_id': cfg.id, 'redirect_uri': redirect_uri}, timeout=900)
         params = {
             'client_id': app_id,
             'redirect_uri': redirect_uri,
@@ -428,7 +446,7 @@ class FacebookOAuthCallback(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(summary='Facebook OAuth2 回调（换取用户 token 并绑定 SocialAccount）', tags=['社交账户'])
-    def get(self, request):
+    def get(self, request, user_id: int | None = None):
         from .models import SocialConfig, SocialAccount
         code = request.query_params.get('code')
         state = request.query_params.get('state')
@@ -443,7 +461,8 @@ class FacebookOAuthCallback(APIView):
             return Response({'detail': '配置不存在'}, status=400)
         app_id = cfg.app_id or cfg.client_id
         app_secret = cfg.app_secret or cfg.client_secret
-        redirect_uri = (cfg.redirect_uris or [None])[0]
+        # per-user redirect_uri from state has priority
+        redirect_uri = ctx.get('redirect_uri') or (cfg.redirect_uris or [None])[0]
         api_ver = cfg.api_version or 'v19.0'
         if not (app_id and app_secret and redirect_uri):
             return Response({'detail': '配置缺少 app_id/app_secret/redirect_uri'}, status=400)
@@ -468,7 +487,7 @@ class FacebookOAuthCallback(APIView):
             me = mr.json()
         except requests.RequestException as e:
             me = {'error': str(e), 'body': getattr(e.response, 'text', '')}
-        owner_id = ctx.get('user_id') or (request.user.id if request.user and request.user.is_authenticated else None)
+        owner_id = (user_id or ctx.get('user_id')) or (request.user.id if request.user and request.user.is_authenticated else None)
         if not owner_id:
             return Response({'detail': '缺少 owner_id'}, status=400)
         ext_id = (me or {}).get('id')
@@ -504,10 +523,15 @@ class InstagramOAuthStart(APIView):
         redirect_uris = cfg.redirect_uris or []
         if not redirect_uris:
             return Response({'detail': 'Instagram 配置缺少 redirect_uris'}, status=400)
-        redirect_uri = redirect_uris[0]
+        use_user_cb = request.query_params.get('use_user_callback') in {'1','true','yes'}
+        if use_user_cb and user_id:
+            host = request.build_absolute_uri('/')[:-1]
+            redirect_uri = host + f"/api/social/oauth/instagram/callback/{user_id}/"
+        else:
+            redirect_uri = redirect_uris[0]
         scopes = cfg.scopes or ['user_profile']
         state = secrets.token_urlsafe(16)
-        cache.set(f'oauth2:ig:{state}', {'user_id': user_id, 'cfg_id': cfg.id}, timeout=900)
+        cache.set(f'oauth2:ig:{state}', {'user_id': user_id, 'cfg_id': cfg.id, 'redirect_uri': redirect_uri}, timeout=900)
         params = {
             'client_id': app_id,
             'redirect_uri': redirect_uri,
@@ -523,7 +547,7 @@ class InstagramOAuthCallback(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(summary='Instagram OAuth 回调（换取用户 token 并绑定 SocialAccount）', tags=['社交账户'])
-    def get(self, request):
+    def get(self, request, user_id: int | None = None):
         from .models import SocialConfig, SocialAccount
         code = request.query_params.get('code')
         state = request.query_params.get('state')
@@ -538,7 +562,7 @@ class InstagramOAuthCallback(APIView):
             return Response({'detail': '配置不存在'}, status=400)
         app_id = cfg.app_id or cfg.client_id
         app_secret = cfg.app_secret or cfg.client_secret
-        redirect_uri = (cfg.redirect_uris or [None])[0]
+        redirect_uri = ctx.get('redirect_uri') or (cfg.redirect_uris or [None])[0]
         if not (app_id and app_secret and redirect_uri):
             return Response({'detail': '配置缺少 app_id/app_secret/redirect_uri'}, status=400)
         try:
@@ -561,7 +585,7 @@ class InstagramOAuthCallback(APIView):
             me = mr.json()
         except requests.RequestException as e:
             me = {'error': str(e), 'body': getattr(e.response, 'text', '')}
-        owner_id = ctx.get('user_id') or (request.user.id if request.user and request.user.is_authenticated else None)
+        owner_id = (user_id or ctx.get('user_id')) or (request.user.id if request.user and request.user.is_authenticated else None)
         if not owner_id:
             return Response({'detail': '缺少 owner_id'}, status=400)
         ext_id = (me or {}).get('id')
