@@ -173,6 +173,24 @@ class TagViewSet(viewsets.ModelViewSet):
         # 普通用户允许创建标签（全局共享），如需限制可改为管理员专属
         serializer.save()
 
+    def destroy(self, request, *args, **kwargs):
+        # 仅管理员可删除标签
+        if not (request.user and request.user.is_authenticated and request.user.is_staff):
+            return Response({'detail': '仅管理员可删除标签'}, status=403)
+        return super().destroy(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        # 仅管理员可更新标签
+        if not (request.user and request.user.is_authenticated and request.user.is_staff):
+            return Response({'detail': '仅管理员可更新标签'}, status=403)
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        # 仅管理员可部分更新标签
+        if not (request.user and request.user.is_authenticated and request.user.is_staff):
+            return Response({'detail': '仅管理员可更新标签'}, status=403)
+        return super().partial_update(request, *args, **kwargs)
+
 
 class FollowTargetViewSet(viewsets.ModelViewSet):
     queryset = FollowTarget.objects.all().order_by('-updated_at')

@@ -6,6 +6,13 @@ from ai.models import AIConfig
 from keywords.models import KeywordConfig
 from prompts.models import PromptConfig
 
+DEFAULT_PAYLOAD_TEXTS = {
+    'post': '请生成一条适合平台的中文发帖文案。',
+    'reply_comment': '请针对该评论给出简短友好回复。',
+    'reply_message': '请针对该消息给出简短友好回复。',
+    'follow': '关注目标账户。'
+}
+
 
 class ScheduledTaskSerializer(serializers.ModelSerializer):
     class OwnerBriefSerializer(serializers.ModelSerializer):
@@ -69,6 +76,17 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             payload = attrs.get('payload_template', getattr(instance, 'payload_template', {})) or {}
             has_media = bool(payload.get('image_url') or payload.get('video_url'))
             ensure(has_media, 'Instagram 发帖需要提供 image_url 或 video_url')
+
+        # payload_template.text 默认值（按任务类型）
+        payload = attrs.get('payload_template', getattr(instance, 'payload_template', {})) or {}
+        if not isinstance(payload, dict):
+            payload = {}
+        txt = (payload.get('text') or '').strip()
+        if not txt:
+            default_text = DEFAULT_PAYLOAD_TEXTS.get(task_type)
+            if default_text is not None:
+                payload['text'] = default_text
+        attrs['payload_template'] = payload
 
         return attrs
 
