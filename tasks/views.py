@@ -5,10 +5,12 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
-from .models import ScheduledTask, TaskRun, Tag, TagTemplate
-from .serializers import ScheduledTaskSerializer, TaskRunSerializer, TagSerializer, TagTemplateSerializer
+from .models import ScheduledTask, TaskRun, Tag, FollowTarget
+from .serializers import ScheduledTaskSerializer, TaskRunSerializer, TagSerializer, FollowTargetSerializer
 from .tasks import execute_scheduled_task
 from .runner import execute_task, generate_ai_preview
+from .clients import TwitterClient
+from social.models import SocialAccount
 
 
 @extend_schema_view(
@@ -172,27 +174,104 @@ class TagViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-class TagTemplateViewSet(viewsets.ModelViewSet):
-    queryset = TagTemplate.objects.all().order_by('name')
-    serializer_class = TagTemplateSerializer
+class FollowTargetViewSet(viewsets.ModelViewSet):
+    queryset = FollowTarget.objects.all().order_by('-updated_at')
+    serializer_class = FollowTargetSerializer
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # 管理员可查看全部，可用 ?owner_id= 过滤；普通用户仅看自己的
-        if self.request.user and self.request.user.is_authenticated and self.request.user.is_staff:
+        user = self.request.user
+        if user and user.is_authenticated and user.is_staff:
             owner_id = self.request.query_params.get('owner_id')
             if owner_id:
                 qs = qs.filter(owner_id=owner_id)
         else:
-            qs = qs.filter(owner_id=self.request.user.id if self.request.user and self.request.user.is_authenticated else -1)
+            uid = user.id if user and user.is_authenticated else None
+            qs = qs.filter(owner_id=uid) if uid else qs.none()
+        provider = self.request.query_params.get('provider')
+        if provider:
+            qs = qs.filter(provider=provider.lower())
+        enabled = self.request.query_params.get('enabled')
+        if enabled in {'true','false'}:
+            qs = qs.filter(enabled=(enabled=='true'))
         q = self.request.query_params.get('q')
         if q:
-            qs = qs.filter(name__icontains=q)
+            qs = qs.filter(username__icontains=q)
         return qs
 
     def perform_create(self, serializer):
-        if self.request.user and self.request.user.is_authenticated and not self.request.user.is_staff:
-            serializer.save(owner=self.request.user)
+        user = self.request.user
+        if user and user.is_authenticated and not user.is_staff:
+            serializer.save(owner=user)
         else:
             serializer.save()
+
+    @extend_schema(summary='从 Twitter 同步“我正在关注的人”到 FollowTarget（默认不启用）', tags=['关注'] )
+    @action(detail=False, methods=['post'], url_path='sync/twitter')
+    def sync_twitter(self, request):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'detail': '未登录'}, status=401)
+        # 选择当前租户最近的 Twitter 账号
+        account = SocialAccount.objects.filter(owner_id=user.id, provider='twitter', status='active').order_by('-updated_at').first()
+        if not account:
+            return Response({'detail': '未绑定 Twitter 账号'}, status=400)
+        bearer = account.get_access_token() or None
+        consumer_key = None
+        consumer_secret = None
+        access_token = None
+        access_token_secret = None
+        # 如无 OAuth2，尝试 OAuth1
+        if not bearer:
+            access_token = account.get_access_token()
+            access_token_secret = account.get_refresh_token()
+        cli = None
+        if bearer:
+            cli = TwitterClient(bearer_token=bearer)
+        elif access_token and access_token_secret:
+            # 客户端内部会以 OAuth1 会话发起请求
+            from social.models import SocialConfig
+            cfg = SocialConfig.objects.filter(provider='twitter', owner_id=user.id).order_by('-is_default', '-priority').first()
+            if cfg and cfg.client_id and cfg.client_secret:
+                consumer_key = cfg.client_id
+                consumer_secret = cfg.client_secret
+            cli = TwitterClient(consumer_key=consumer_key, consumer_secret=consumer_secret,
+                                access_token=access_token, access_token_secret=access_token_secret)
+        if not cli:
+            return Response({'detail': '缺少有效的 Twitter 凭据'}, status=400)
+        # 获取自身 user id
+        try:
+            me = cli.get_me()
+        except Exception as e:
+            return Response({'detail': '获取用户信息失败', 'error': str(e)}, status=400)
+        uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+        if not uid:
+            return Response({'detail': '无法识别用户ID'}, status=400)
+        # 分页拉取 following 列表
+        saved = 0
+        token = None
+        for _ in range(10):  # 最多翻10页，避免超量
+            try:
+                page = cli.get_following(uid, pagination_token=token, max_results=100)
+            except Exception as e:
+                return Response({'detail': '拉取关注列表失败', 'error': str(e)}, status=400)
+            data = (page or {}).get('data') or []
+            meta = (page or {}).get('meta') or {}
+            for u in data:
+                ext_id = u.get('id') or ''
+                username = u.get('username') or ''
+                name = u.get('name') or ''
+                if not ext_id:
+                    continue
+                FollowTarget.objects.update_or_create(
+                    owner=user,
+                    provider='twitter',
+                    external_user_id=ext_id,
+                    defaults={'username': username, 'display_name': name, 'source': 'imported', 'enabled': False}
+                )
+                saved += 1
+            token = meta.get('next_token')
+            if not token:
+                break
+        return Response({'status': 'ok', 'synced': saved})

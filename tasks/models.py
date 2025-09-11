@@ -7,6 +7,7 @@ class ScheduledTask(models.Model):
         ('reply_comment', '回复评论'),
         ('reply_message', '回复消息'),
         ('post', '发帖'),
+        ('follow', '关注'),
     ]
 
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='scheduled_tasks', help_text='归属用户')
@@ -133,21 +134,57 @@ class Tag(models.Model):
 ScheduledTask.add_to_class('tags', models.ManyToManyField(Tag, blank=True, related_name='tasks', help_text='自动拼接的标签，如 #AI #新品'))
 
 
-class TagTemplate(models.Model):
-    """Reusable tag set owned by a user."""
-    name = models.CharField(max_length=100)
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='tag_templates')
-    tags = models.ManyToManyField(Tag, blank=True, related_name='templates')
+class FollowTarget(models.Model):
+    """可被关注的目标用户清单（按 owner 隔离）。"""
+    SOURCE_CHOICES = [
+        ('manual', '手动录入'),
+        ('imported', '同步导入'),
+    ]
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='follow_targets')
+    provider = models.CharField(max_length=32)
+    external_user_id = models.CharField(max_length=100)
+    username = models.CharField(max_length=200, blank=True)
+    display_name = models.CharField(max_length=200, blank=True)
+    note = models.CharField(max_length=200, blank=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
+    enabled = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('owner', 'name')
-        ordering = ['owner_id', 'name']
+        unique_together = ('owner', 'provider', 'external_user_id')
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(fields=['owner', 'provider']),
+            models.Index(fields=['provider', 'external_user_id']),
+        ]
 
     def __str__(self) -> str:
-        return f"{self.owner_id}:{self.name}"
+        return f"{self.provider}:{self.username or self.external_user_id}"
 
 
-# Link ScheduledTask to TagTemplate (optional)
-ScheduledTask.add_to_class('tag_template', models.ForeignKey('TagTemplate', null=True, blank=True, on_delete=models.SET_NULL, related_name='scheduled_tasks', help_text='可选：选择一个标签模板来自动附加标签'))
+class FollowAction(models.Model):
+    """关注动作记录（幂等与审计）。"""
+    STATUS_CHOICES = [
+        ('success', '成功'),
+        ('failed', '失败'),
+        ('skipped', '跳过'),
+    ]
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='follow_actions')
+    provider = models.CharField(max_length=32)
+    social_account = models.ForeignKey('social.SocialAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='follow_actions')
+    target = models.ForeignKey(FollowTarget, on_delete=models.CASCADE, related_name='actions')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='success')
+    error_code = models.CharField(max_length=64, blank=True)
+    external_relation_id = models.CharField(max_length=200, blank=True)
+    response_dump = models.JSONField(null=True, blank=True)
+    executed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-executed_at']
+        indexes = [
+            models.Index(fields=['owner', 'provider']),
+            models.Index(fields=['provider', 'status']),
+            models.Index(fields=['executed_at']),
+        ]
+

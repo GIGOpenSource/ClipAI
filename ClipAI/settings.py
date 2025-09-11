@@ -242,3 +242,29 @@ AI_FAKE_FALLBACK_ENABLED = (os.getenv('AI_FAKE_FALLBACK_ENABLED', 'false').lower
 # Rate limit enforcement (no DB changes)
 RATE_LIMIT_ENFORCE_SKIP = (os.getenv('RATE_LIMIT_ENFORCE_SKIP', 'true').lower() == 'true')
 RATE_LIMIT_DEFAULT_BACKOFF_SECONDS = int(os.getenv('RATE_LIMIT_DEFAULT_BACKOFF_SECONDS', '300'))
+FEATURE_THREADS = (os.getenv('FEATURE_THREADS', 'false').lower() == 'true')
+
+# Django cache: prefer Redis for cross-process rate-limit blocks; fallback to local memory
+REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL') or os.getenv('CACHE_URL')
+if not REDIS_CACHE_URL:
+    try:
+        if (CELERY_BROKER_URL or '').startswith('redis://'):
+            # Use DB 2 for cache by default when broker is redis
+            REDIS_CACHE_URL = (CELERY_BROKER_URL.rsplit('/', 1)[0] + '/2') if '/' in CELERY_BROKER_URL else None
+    except Exception:
+        REDIS_CACHE_URL = None
+
+if REDIS_CACHE_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_CACHE_URL,
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'clipai-local-cache',
+        }
+    }

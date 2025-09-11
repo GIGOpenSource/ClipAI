@@ -17,6 +17,8 @@ from ai.client import OpenAICompatibleClient
 from django.conf import settings
 from social.models import SocialAccount
 from django.core.cache import cache
+from .models import FollowTarget, FollowAction
+from .clients import TwitterClient
 _rate_lock = Lock()
 _rate_window_seconds = 60
 _rate_limit_per_window = 30  # 每账号每窗口最多外呼次数（占位，可后续改为配置）
@@ -119,14 +121,9 @@ def execute_task(task) -> Dict[str, Any]:
     response: Dict[str, Any] = {'task_type': task.type, 'provider': task.provider}
     # Prepare content to post: prefer AI-generated for post tasks
     text_to_post = (task.payload_template or {}).get('text', '')
-    # Append tags (#tag) if any (prefer tag_template if set)
+    # Append tags (#tag) if any (use task.tags only)
     try:
-        tag_names = []
-        tpl = getattr(task, 'tag_template', None)
-        if tpl:
-            tag_names = [t.name for t in tpl.tags.all()][:5]
-        else:
-            tag_names = [t.name for t in task.tags.all()][:5]
+        tag_names = [t.name for t in task.tags.all()][:5]
         if tag_names:
             tail = ' ' + ' '.join('#' + n.lstrip('#') for n in tag_names)
             if text_to_post:
@@ -159,12 +156,7 @@ def execute_task(task) -> Dict[str, Any]:
                     text_to_post = ai_text
                     # re-append tags after AI text
                     try:
-                        tag_names = []
-                        tpl = getattr(task, 'tag_template', None)
-                        if tpl:
-                            tag_names = [t.name for t in tpl.tags.all()][:5]
-                        else:
-                            tag_names = [t.name for t in task.tags.all()][:5]
+                        tag_names = [t.name for t in task.tags.all()][:5]
                         if tag_names:
                             text_to_post = (text_to_post + ' ' + ' '.join('#' + n.lstrip('#') for n in tag_names)).strip()
                     except Exception:
@@ -217,6 +209,103 @@ def execute_task(task) -> Dict[str, Any]:
             ig_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
         elif task.provider == 'threads':
             th_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
+        elif task.provider == 'twitter' and task.type == 'follow':
+            # Handle follow flow
+            try:
+                # Select targets
+                daily_cap = None
+                try:
+                    daily_cap = int((task.payload_template or {}).get('daily_cap') or 0) or None
+                except Exception:
+                    daily_cap = None
+                if not _enforce_daily_cap(task.owner_id, task.provider, daily_cap):
+                    response['skipped'] = 'daily_cap_reached'
+                    raise Exception('Daily cap reached')
+
+                targets = _select_follow_targets(task, task.owner_id)
+                response['follow_candidates'] = [
+                    {'id': t.id, 'ext': t.external_user_id, 'username': t.username}
+                    for t in targets
+                ]
+                if not targets:
+                    response['followed'] = []
+                    return {'request_dump': request_dump, 'response': response, 'agg': {'success': True, 'duration_ms': 0, 'owner_id': task.owner_id, 'provider': task.provider, 'task_type': task.type, 'sla_met': True}, 'used': used}
+
+                # Prepare client (prefer OAuth2 user bearer; fallback OAuth1 if available)
+                consumer_key = getattr(social_cfg, 'client_id', '') or None
+                consumer_secret = getattr(social_cfg, 'client_secret', '') or None
+                access_token = account.get_access_token() if account else None
+                access_token_secret = account.get_refresh_token() if account else None
+
+                cli: TwitterClient | None = None
+                if access_token and access_token_secret and consumer_key and consumer_secret:
+                    cli = TwitterClient(
+                        consumer_key=consumer_key,
+                        consumer_secret=consumer_secret,
+                        access_token=access_token,
+                        access_token_secret=access_token_secret,
+                    )
+                if not cli:
+                    response['error'] = 'oauth1_required'
+                    raise Exception('Twitter requires OAuth1 (access_token + token_secret) for write operations in current plan')
+
+                # Get source user id
+                me = cli.get_me()
+                source_uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+                if not source_uid:
+                    raise Exception('Cannot resolve source user id')
+
+                # idem + local rate guard
+                rate_guard()
+
+                followed = []
+                for tgt in targets:
+                    # per-target idempotency: if already success record exists, skip
+                    if FollowAction.objects.filter(owner_id=task.owner_id, provider='twitter', target=tgt, status='success').exists():
+                        FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='skipped', error_code='already_followed')
+                        continue
+                    try:
+                        target_uid = tgt.external_user_id
+                        if not target_uid and tgt.username:
+                            info = cli.get_user_by_username(tgt.username)
+                            target_uid = ((info or {}).get('data') or {}).get('id')
+                            if not target_uid:
+                                FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='failed', error_code='target_not_found')
+                                continue
+                        res = cli.follow_user(source_user_id=source_uid, target_user_id=target_uid)
+                        FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='success', response_dump=res)
+                        followed.append({'target': tgt.id, 'external_user_id': target_uid})
+                    except Exception as e:
+                        # Try extract rate limit and set block
+                        try:
+                            resp_obj = getattr(e, 'response', None)
+                            if resp_obj is not None:
+                                _rl = TwitterClient()._extract_rate_limit(resp_obj)
+                                response['rate_limit_headers'] = _rl
+                                status_code = getattr(resp_obj, 'status_code', None)
+                                remaining = _rl.get('x-rate-limit-remaining')
+                                reset_at = _rl.get('x-rate-limit-reset')
+                                should_block = (status_code == 429) or (remaining is not None and str(remaining) == '0')
+                                if should_block:
+                                    now_ts = int(time.time())
+                                    ttl = None
+                                    if reset_at and str(reset_at).isdigit():
+                                        ttl = int(reset_at) - now_ts + 1
+                                    if not ttl or ttl <= 0:
+                                        ttl = int(getattr(settings, 'RATE_LIMIT_DEFAULT_BACKOFF_SECONDS', 300))
+                                    cache.set(_rate_key(task.owner_id, task.provider, getattr(account, 'id', None)), 1, timeout=ttl)
+                                    response['rate_limited'] = True
+                                    response['rate_limit_blocked_seconds'] = ttl
+                        except Exception:
+                            pass
+                        FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='failed', error_code='follow_failed')
+                        # If rate-limited, break early
+                        if response.get('rate_limited'):
+                            break
+
+                response['followed'] = followed
+            except Exception as e:
+                response['error'] = str(e)
     except Exception as exc:
         response['error'] = str(exc)
     finished_at = timezone.now()
@@ -261,6 +350,27 @@ def execute_task(task) -> Dict[str, Any]:
         except Exception:
             pass
     return {'request_dump': request_dump, 'response': response, 'agg': agg, 'used': used}
+
+
+def _select_follow_targets(task, owner_id: int) -> list[FollowTarget]:
+    payload = task.payload_template or {}
+    ids = payload.get('target_ids') or []
+    qs = FollowTarget.objects.filter(owner_id=owner_id, provider=task.provider)
+    if ids:
+        return list(qs.filter(id__in=ids, enabled=True)[:100])
+    # 默认：从启用清单取前N个
+    limit = int(payload.get('max_per_run') or 5)
+    return list(qs.filter(enabled=True).order_by('-updated_at')[:max(1, min(100, limit))])
+
+
+def _enforce_daily_cap(owner_id: int, provider: str, cap: int | None) -> bool:
+    if not cap:
+        return True
+    from django.utils import timezone as _tz
+    start = _tz.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    count = FollowAction.objects.filter(owner_id=owner_id, provider=provider, executed_at__gte=start, status='success').count()
+    return count < cap
+
 
 
 def generate_ai_preview(task) -> Dict[str, Any]:
@@ -315,7 +425,13 @@ def generate_ai_preview(task) -> Dict[str, Any]:
                 return any((w in text_l) for w in include if w)
         return any((w in text_l) for w in include if w)
 
-    # 发帖不做关键词拦截，其它场景保留
+    # 发帖不做关键词拦截，其它场景保留；follow 预览直接返回候选列表
+    if task.type == 'follow':
+        targets = [
+            {'id': t.id, 'ext': t.external_user_id, 'username': t.username}
+            for t in _select_follow_targets(task, task.owner_id)
+        ]
+        return {'content': '', 'blocked': False, 'targets': targets}
     if task.type != 'post':
         if not _match_keywords(base_text):
             return {'content': '', 'blocked': True, 'reason': 'keyword_filter_blocked'}

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import ScheduledTask, TaskRun, Tag, TagTemplate
+from .models import ScheduledTask, TaskRun, Tag, FollowTarget
 from social.models import SocialConfig
 from ai.models import AIConfig
 from keywords.models import KeywordConfig
@@ -19,8 +19,6 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
     keyword_config = serializers.SerializerMethodField()
     prompt_config = serializers.SerializerMethodField()
     tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
-    tag_template = serializers.PrimaryKeyRelatedField(queryset=TagTemplate.objects.all(), required=False, allow_null=True)
-    tag_template_detail = serializers.SerializerMethodField()
     class Meta:
         model = ScheduledTask
         fields = [
@@ -30,7 +28,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'recurrence_type', 'interval_value', 'time_of_day', 'weekday_mask', 'day_of_month', 'timezone', 'start_at', 'end_at', 'cron_expr',
             'enabled',
             'next_run_at', 'last_run_at', 'status', 'max_retries', 'rate_limit_hint',
-            'payload_template', 'tags', 'tag_template', 'tag_template_detail', 'created_at', 'updated_at'
+            'payload_template', 'tags', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -42,6 +40,8 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         weekday_mask = attrs.get('weekday_mask', getattr(instance, 'weekday_mask', [])) or []
         day_of_month = attrs.get('day_of_month', getattr(instance, 'day_of_month', None))
         cron_expr = attrs.get('cron_expr', getattr(instance, 'cron_expr', '')) or ''
+        provider = (attrs.get('provider') or getattr(instance, 'provider', '') or '').lower()
+        task_type = attrs.get('type', getattr(instance, 'type', ''))
 
         def ensure(cond: bool, msg: str):
             if not cond:
@@ -59,6 +59,16 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         if recurrence_type == 'cron':
             parts = [p for p in cron_expr.strip().split() if p]
             ensure(5 <= len(parts) <= 6, 'cron_expr 非法，应为 5 或 6 段表达式')
+
+        # 业务约束：关注任务仅支持 Twitter
+        if task_type == 'follow':
+            ensure(provider == 'twitter', '关注任务目前仅支持 Twitter 平台')
+
+        # 业务约束：Instagram 发帖必须包含媒体 URL（image_url 或 video_url）
+        if provider == 'instagram' and task_type == 'post':
+            payload = attrs.get('payload_template', getattr(instance, 'payload_template', {})) or {}
+            has_media = bool(payload.get('image_url') or payload.get('video_url'))
+            ensure(has_media, 'Instagram 发帖需要提供 image_url 或 video_url')
 
         return attrs
 
@@ -100,6 +110,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         return {
             'id': cfg.id,
             'owner': cfg.owner_id,
+            'name': cfg.name,
             'provider': cfg.provider,
             'match_mode': cfg.match_mode,
             'enabled': cfg.enabled,
@@ -118,27 +129,6 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'name': cfg.name,
             'enabled': cfg.enabled,
         }
-
-    def get_tag_template_detail(self, obj):
-        tpl = getattr(obj, 'tag_template', None)
-        if not tpl:
-            return None
-        return {
-            'id': tpl.id,
-            'name': tpl.name,
-            'owner': tpl.owner_id,
-            'tags': [t.id for t in tpl.tags.all()],
-        }
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-        request = self.context.get('request')
-        user = getattr(request, 'user', None)
-        tpl = attrs.get('tag_template', getattr(self.instance, 'tag_template', None))
-        if tpl and user and user.is_authenticated and not user.is_staff:
-            if tpl.owner_id != user.id:
-                raise serializers.ValidationError('只能选择你自己的标签模板')
-        return attrs
 
 
 class TaskRunSerializer(serializers.ModelSerializer):
@@ -165,31 +155,23 @@ class TagSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
-class TagTemplateSerializer(serializers.ModelSerializer):
+class FollowTargetSerializer(serializers.ModelSerializer):
     class OwnerBriefSerializer(serializers.ModelSerializer):
         class Meta:
             model = get_user_model()
             fields = ['id', 'username']
     owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
-    tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
 
     class Meta:
-        model = TagTemplate
-        fields = ['id', 'name', 'owner', 'owner_detail', 'tags', 'created_at', 'updated_at']
+        model = FollowTarget
+        fields = [
+            'id', 'owner', 'owner_detail', 'provider', 'external_user_id', 'username',
+            'display_name', 'note', 'source', 'enabled', 'created_at', 'updated_at'
+        ]
         read_only_fields = ['created_at', 'updated_at']
 
-    def create(self, validated_data):
-        tags = validated_data.pop('tags', [])
-        inst = super().create(validated_data)
-        if tags:
-            inst.tags.set(tags)
-        return inst
-
-    def update(self, instance, validated_data):
-        tags = validated_data.pop('tags', None)
-        inst = super().update(instance, validated_data)
-        if tags is not None:
-            inst.tags.set(tags)
-        return inst
-
+    def validate(self, attrs):
+        provider = (attrs.get('provider') or '').lower()
+        attrs['provider'] = provider
+        return attrs
 

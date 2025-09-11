@@ -113,6 +113,27 @@ class TwitterClient:
         payload = {'text': text, 'reply': {'in_reply_to_tweet_id': reply_to_tweet_id}}
         return self._request('POST', '/tweets', payload)
 
+    # List the accounts the given user follows (requires follows.read)
+    def get_following(self, user_id: str, pagination_token: str | None = None, max_results: int = 100):
+        params = []
+        if max_results:
+            params.append(f"max_results={max(1, min(1000, max_results))}")
+        if pagination_token:
+            params.append(f"pagination_token={pagination_token}")
+        query = ('?' + '&'.join(params)) if params else ''
+        return self._request('GET', f"/users/{user_id}/following{query}")
+
+    # Follow a user (requires follows.write). In v2, endpoint:
+    # POST /2/users/{source_user_id}/following { "target_user_id": "..." }
+    def follow_user(self, source_user_id: str, target_user_id: str):
+        payload = {"target_user_id": target_user_id}
+        return self._request('POST', f"/users/{source_user_id}/following", payload)
+
+    def get_user_by_username(self, username: str):
+        # GET /2/users/by/username/:username
+        uname = username.lstrip('@') if username else ''
+        return self._request('GET', f"/users/by/username/{uname}")
+
 
 class InstagramClient:
     GRAPH_BASE = 'https://graph.facebook.com'
@@ -122,10 +143,28 @@ class InstagramClient:
         self.page_access_token = page_access_token
         self.ig_business_account_id = ig_business_account_id
 
-    def post_media(self, caption: str):
-        # Simplified creation container (no media upload here)
+    def create_media(self, *, image_url: str | None = None, video_url: str | None = None, caption: str | None = None):
+        """Create IG media container. Provide either image_url or video_url.
+        Returns: { id: creation_id }
+        """
         url = f"{self.GRAPH_BASE}/{self.api_version}/{self.ig_business_account_id}/media"
-        resp = requests.post(url, data={'caption': caption, 'access_token': self.page_access_token}, timeout=15)
+        data = {'access_token': self.page_access_token}
+        if caption:
+            data['caption'] = caption
+        if image_url:
+            data['image_url'] = image_url
+        if video_url:
+            data['video_url'] = video_url
+        resp = requests.post(url, data=data, timeout=20)
+        resp.raise_for_status()
+        return resp.json()
+
+    def publish_media(self, creation_id: str):
+        """Publish a previously created media container.
+        Returns: { id: media_id }
+        """
+        url = f"{self.GRAPH_BASE}/{self.api_version}/{self.ig_business_account_id}/media_publish"
+        resp = requests.post(url, data={'creation_id': creation_id, 'access_token': self.page_access_token}, timeout=20)
         resp.raise_for_status()
         return resp.json()
 

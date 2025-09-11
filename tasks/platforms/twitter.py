@@ -25,11 +25,7 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
            idem_guard, rate_guard):
     consumer_key = getattr(social_cfg, 'client_id', '') or None
     consumer_secret = getattr(social_cfg, 'client_secret', '') or None
-    bearer_user = None
-    if account and account.get_access_token() and ('tweet.' in ' '.join(account.scopes or []) or (account.scopes == [])):
-        bearer_user = account.get_access_token()
     has_oauth1 = bool(account and account.get_access_token() and account.get_refresh_token())
-    bearer_cfg = getattr(social_cfg, 'bearer_token', None)
 
     # rate-limit global block
     if _is_blocked(task.owner_id, task.provider, getattr(account, 'id', None)):
@@ -37,27 +33,21 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
         response['rate_limited'] = True
         raise Exception('Rate limit blocked - skipped')
 
-    if bearer_user or bearer_cfg or has_oauth1:
-        if bearer_user:
-            tw_diag = TwitterClient(bearer_token=bearer_user)
-        elif has_oauth1:
-            tw_diag = TwitterClient(
-                consumer_key=consumer_key,
-                consumer_secret=consumer_secret,
-                access_token=account.get_access_token(),
-                access_token_secret=account.get_refresh_token(),
-            )
-        else:
-            tw_diag = None
-        if tw_diag:
-            try:
-                _me_body, _rl = tw_diag.get_me_with_headers()
-                response['rate_limit_headers'] = _rl
-                response['rate_limit_warning'] = bool(_rl.get('warning'))
-                if response['rate_limit_warning']:
-                    response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
-            except Exception:
-                pass
+    if has_oauth1:
+        tw_diag = TwitterClient(
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            access_token=account.get_access_token(),
+            access_token_secret=account.get_refresh_token(),
+        )
+        try:
+            _me_body, _rl = tw_diag.get_me_with_headers()
+            response['rate_limit_headers'] = _rl
+            response['rate_limit_warning'] = bool(_rl.get('warning'))
+            if response['rate_limit_warning']:
+                response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
+        except Exception:
+            pass
 
     # idem+local rate guard
     idem_guard()
@@ -65,17 +55,15 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
 
     if task.type == 'post':
         try:
-            if has_oauth1:
-                tw_post = TwitterClient(
-                    consumer_key=consumer_key,
-                    consumer_secret=consumer_secret,
-                    access_token=account.get_access_token(),
-                    access_token_secret=account.get_refresh_token(),
-                )
-                response['tweet'] = tw_post.post_tweet(text=text_to_post)
-            elif bearer_user:
-                tw_post = TwitterClient(bearer_token=bearer_user)
-                response['tweet'] = tw_post.post_tweet(text=text_to_post)
+            if not has_oauth1:
+                raise Exception('OAuth1 credentials required for Twitter write operations')
+            tw_post = TwitterClient(
+                consumer_key=consumer_key,
+                consumer_secret=consumer_secret,
+                access_token=account.get_access_token(),
+                access_token_secret=account.get_refresh_token(),
+            )
+            response['tweet'] = tw_post.post_tweet(text=text_to_post)
         except Exception as _e:
             try:
                 resp_obj = getattr(_e, 'response', None)
@@ -124,19 +112,13 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
                             qparts.append(t)
                         else:
                             qparts.append(t)
-                    if qparts and (bearer_user or bearer_cfg or has_oauth1):
-                        client = None
-                        if bearer_user:
-                            client = TwitterClient(bearer_token=bearer_user)
-                        elif bearer_cfg:
-                            client = TwitterClient(bearer_token=bearer_cfg)
-                        elif has_oauth1:
-                            client = TwitterClient(
-                                consumer_key=consumer_key,
-                                consumer_secret=consumer_secret,
-                                access_token=account.get_access_token(),
-                                access_token_secret=account.get_refresh_token(),
-                            )
+                    if qparts and has_oauth1:
+                        client = TwitterClient(
+                            consumer_key=consumer_key,
+                            consumer_secret=consumer_secret,
+                            access_token=account.get_access_token(),
+                            access_token_secret=account.get_refresh_token(),
+                        )
                         if client:
                             q = urllib.parse.quote(' OR '.join(qparts))
                             path = f"/tweets/search/recent?query={q}&max_results=10"
@@ -156,19 +138,15 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
                 pass
         if reply_to:
             try:
-                if has_oauth1:
-                    tw_cli = TwitterClient(
-                        consumer_key=consumer_key,
-                        consumer_secret=consumer_secret,
-                        access_token=account.get_access_token(),
-                        access_token_secret=account.get_refresh_token(),
-                    )
-                elif bearer_user:
-                    tw_cli = TwitterClient(bearer_token=bearer_user)
-                else:
-                    tw_cli = None
-                if tw_cli:
-                    response['tweet_reply'] = tw_cli.reply_tweet(reply_to_tweet_id=reply_to, text=text)
+                if not has_oauth1:
+                    raise Exception('OAuth1 credentials required for Twitter write operations')
+                tw_cli = TwitterClient(
+                    consumer_key=consumer_key,
+                    consumer_secret=consumer_secret,
+                    access_token=account.get_access_token(),
+                    access_token_secret=account.get_refresh_token(),
+                )
+                response['tweet_reply'] = tw_cli.reply_tweet(reply_to_tweet_id=reply_to, text=text)
             except Exception as _e:
                 try:
                     resp_obj = getattr(_e, 'response', None)

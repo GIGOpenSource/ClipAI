@@ -1,6 +1,6 @@
 from django.urls import path, include
 from django.conf import settings
-from .views import WebhookReceiver, SocialAccountHealthView, TwitterOAuthStart, TwitterOAuthCallback, FacebookOAuthStart, FacebookOAuthCallback, InstagramOAuthStart, InstagramOAuthCallback
+from .views import WebhookReceiver, SocialAccountHealthView, TwitterOAuthStart, TwitterOAuthCallback, FacebookOAuthStart, FacebookOAuthCallback, InstagramOAuthStart, InstagramOAuthCallback, ThreadsOAuthStart, ThreadsOAuthCallback
 from rest_framework.routers import DefaultRouter
 from .views import SocialConfigViewSet, SocialAccountViewSet
 
@@ -20,6 +20,9 @@ urlpatterns = [
     path('oauth/instagram/start/', InstagramOAuthStart.as_view(), name='instagram-oauth-start'),
     path('oauth/instagram/callback/', InstagramOAuthCallback.as_view(), name='instagram-oauth-callback'),
     path('oauth/instagram/callback/<int:user_id>/', InstagramOAuthCallback.as_view(), name='instagram-oauth-callback-user'),
+    path('oauth/threads/start/', ThreadsOAuthStart.as_view(), name='threads-oauth-start'),
+    path('oauth/threads/callback/', ThreadsOAuthCallback.as_view(), name='threads-oauth-callback'),
+    path('oauth/threads/callback/<int:user_id>/', ThreadsOAuthCallback.as_view(), name='threads-oauth-callback-user'),
 ]
 
 if getattr(settings, 'WEBHOOKS_ENABLED', False):

@@ -15,6 +15,7 @@ from requests_oauthlib import OAuth1
 import tweepy
 from django.utils import timezone
 from datetime import datetime
+from django.http import HttpRequest
 
 
 class WebhookReceiver(APIView):
@@ -269,19 +270,23 @@ class SocialConfigViewSet(viewsets.ModelViewSet):
         data = {
             'twitter': {
                 'required': ['client_id', 'client_secret'],
-                'optional': ['bearer_token', 'api_version', 'redirect_uris', 'scopes', 'webhook_verify_token', 'signing_secret']
+                'optional': ['bearer_token', 'api_version', 'redirect_uris', 'scopes', 'webhook_verify_token', 'signing_secret'],
+                'supports': {'post': True, 'reply_comment': True, 'follow': True}
             },
             'facebook': {
                 'required': ['app_id', 'app_secret'],
-                'optional': ['api_version', 'redirect_uris', 'scopes', 'page_id', 'page_access_token', 'webhook_verify_token']
+                'optional': ['api_version', 'redirect_uris', 'scopes', 'page_id', 'page_access_token', 'webhook_verify_token'],
+                'supports': {'post': True, 'reply_comment': True, 'follow': False}
             },
             'instagram': {
                 'required': ['app_id', 'app_secret'],
-                'optional': ['api_version', 'redirect_uris', 'scopes', 'ig_business_account_id']
+                'optional': ['api_version', 'redirect_uris', 'scopes', 'ig_business_account_id'],
+                'supports': {'post': True, 'reply_comment': True, 'follow': False}
             },
             'threads': {
                 'required': ['app_id', 'app_secret'],
-                'optional': ['api_version', 'redirect_uris', 'scopes', 'user_id', 'page_access_token']
+                'optional': ['api_version', 'redirect_uris', 'scopes', 'user_id', 'page_access_token'],
+                'supports': {'post': True, 'reply_comment': False, 'follow': False}
             },
         }
         return Response(data)
@@ -591,6 +596,110 @@ class InstagramOAuthCallback(APIView):
         ext_id = (me or {}).get('id')
         ext_name = (me or {}).get('username') or ''
         acc, _ = SocialAccount.objects.get_or_create(owner_id=owner_id, provider='instagram', external_user_id=ext_id or str(owner_id), defaults={'status': 'active'})
+        if access_token:
+            acc.set_access_token(access_token)
+        if ext_name:
+            acc.external_username = ext_name
+        acc.scopes = cfg.scopes or []
+        acc.status = 'active'
+        acc.expires_at = None
+        acc.save()
+        return Response({'status': 'ok', 'account_id': acc.id, 'me': me, 'token': {k: tk.get(k) for k in ['token_type','expires_in'] if k in tk}})
+
+
+# ---- Threads OAuth (assumed Facebook-like OAuth2) ----
+
+class ThreadsOAuthStart(APIView):
+    permission_classes = [IsAuthenticated, IsStaffUser]
+
+    @extend_schema(summary='Threads OAuth2 开始（返回授权链接）', tags=['社交账户'])
+    def get(self, request: HttpRequest):
+        from .models import SocialConfig
+        user_id = request.query_params.get('user_id') or (request.user.id if request.user.is_authenticated else None)
+        cfg = SocialConfig.objects.filter(provider='threads', enabled=True).order_by('-is_default', '-priority').first()
+        if not cfg:
+            return Response({'detail': '未找到 Threads 配置'}, status=404)
+        app_id = cfg.app_id or cfg.client_id
+        app_secret = cfg.app_secret or cfg.client_secret
+        if not app_id or not app_secret:
+            return Response({'detail': '缺少 app_id/client_id 或 app_secret/client_secret'}, status=400)
+        redirect_uris = cfg.redirect_uris or []
+        if not redirect_uris:
+            return Response({'detail': 'Threads 配置缺少 redirect_uris'}, status=400)
+        use_user_cb = request.query_params.get('use_user_callback') in {'1','true','yes'}
+        if use_user_cb and user_id:
+            host = request.build_absolute_uri('/')[:-1]
+            redirect_uri = host + f"/api/social/oauth/threads/callback/{user_id}/"
+        else:
+            redirect_uri = redirect_uris[0]
+        scopes = cfg.scopes or ['threads_basic']
+        api_ver = cfg.api_version or 'v1.0'
+
+        state = secrets.token_urlsafe(16)
+        cache.set(f'oauth2:th:{state}', {'user_id': user_id, 'cfg_id': cfg.id, 'redirect_uri': redirect_uri}, timeout=900)
+        # 假设与 FB 类似的授权端点（按实际文档调整）
+        params = {
+            'client_id': app_id,
+            'redirect_uri': redirect_uri,
+            'state': state,
+            'response_type': 'code',
+            'scope': ','.join(scopes),
+        }
+        auth_url = f'https://www.threads.net/{api_ver}/dialog/oauth?' + urllib.parse.urlencode(params)
+        return Response({'auth_url': auth_url, 'state': state, 'redirect_uri': redirect_uri, 'scopes': scopes})
+
+
+class ThreadsOAuthCallback(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(summary='Threads OAuth2 回调（换取用户 token 并绑定 SocialAccount）', tags=['社交账户'])
+    def get(self, request: HttpRequest, user_id: int | None = None):
+        from .models import SocialConfig, SocialAccount
+        code = request.query_params.get('code')
+        state = request.query_params.get('state')
+        if not code or not state:
+            return Response({'detail': '缺少 code/state'}, status=400)
+        ctx = cache.get(f'oauth2:th:{state}')
+        if not ctx:
+            return Response({'detail': 'state 无效或已过期'}, status=400)
+        cache.delete(f'oauth2:th:{state}')
+        cfg = SocialConfig.objects.filter(id=ctx.get('cfg_id')).first()
+        if not cfg:
+            return Response({'detail': '配置不存在'}, status=400)
+        app_id = cfg.app_id or cfg.client_id
+        app_secret = cfg.app_secret or cfg.client_secret
+        redirect_uri = ctx.get('redirect_uri') or (cfg.redirect_uris or [None])[0]
+        api_ver = cfg.api_version or 'v1.0'
+        if not (app_id and app_secret and redirect_uri):
+            return Response({'detail': '配置缺少 app_id/app_secret/redirect_uri'}, status=400)
+        # 假设 token 交换端点（按实际文档调整）
+        token_url = f'https://graph.threads.net/{api_ver}/oauth/access_token'
+        try:
+            tr = requests.get(token_url, params={
+                'client_id': app_id,
+                'redirect_uri': redirect_uri,
+                'client_secret': app_secret,
+                'code': code,
+            }, timeout=20)
+            tr.raise_for_status()
+            tk = tr.json()
+        except requests.RequestException as e:
+            return Response({'detail': 'token 交换失败', 'error': str(e), 'body': getattr(e.response, 'text', '')}, status=400)
+        access_token = tk.get('access_token')
+        # 获取用户信息（如有）
+        me = None
+        try:
+            mr = requests.get(f'https://graph.threads.net/{api_ver}/me', params={'access_token': access_token}, timeout=20)
+            mr.raise_for_status()
+            me = mr.json()
+        except requests.RequestException as e:
+            me = {'error': str(e), 'body': getattr(e.response, 'text', '')}
+        owner_id = (user_id or ctx.get('user_id')) or (request.user.id if request.user and request.user.is_authenticated else None)
+        if not owner_id:
+            return Response({'detail': '缺少 owner_id'}, status=400)
+        ext_id = (me or {}).get('id')
+        ext_name = (me or {}).get('name') or ''
+        acc, _ = SocialAccount.objects.get_or_create(owner_id=owner_id, provider='threads', external_user_id=ext_id or str(owner_id), defaults={'status': 'active'})
         if access_token:
             acc.set_access_token(access_token)
         if ext_name:
