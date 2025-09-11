@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
 from .models import AIConfig
-from .serializers import AIConfigSerializer
+from .serializers import AIConfigSerializer, AIConfigPickerSerializer
 
 
 @extend_schema_view(
@@ -64,5 +64,12 @@ class AIConfigViewSet(viewsets.ModelViewSet):
         if not config.api_key:
             return Response({'detail': '缺少 api_key'}, status=400)
         return Response({'status': 'ok'})
+
+    @extend_schema(summary='AI 账号下拉（仅 id 与 bot 文案）', tags=['AI配置'])
+    @action(detail=False, methods=['get'])
+    def picker(self, request):
+        qs = self.get_queryset().filter(enabled=True)
+        data = AIConfigPickerSerializer(qs, many=True).data
+        return Response(data)
 
 # Create your views here.

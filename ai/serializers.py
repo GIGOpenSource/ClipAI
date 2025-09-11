@@ -54,3 +54,13 @@ class AIConfigSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
+class AIConfigPickerSerializer(serializers.ModelSerializer):
+    bot = serializers.SerializerMethodField(help_text='仅用于下拉展示：bot{id}')
+
+    class Meta:
+        model = AIConfig
+        fields = ['id', 'bot']
+
+    def get_bot(self, obj: AIConfig) -> str:
+        return f"bot{obj.id}"
+

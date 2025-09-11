@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import ScheduledTask, TaskRun, Tag, FollowTarget
-from social.models import SocialConfig
+from .models import ScheduledTask, TaskRun, Tag, FollowTarget, FollowAction
+from social.models import SocialConfig, SocialAccount
 from ai.models import AIConfig
 from keywords.models import KeywordConfig
 from prompts.models import PromptConfig
@@ -26,6 +26,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
     keyword_config = serializers.SerializerMethodField()
     prompt_config = serializers.SerializerMethodField()
     tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
+    runner_accounts = serializers.PrimaryKeyRelatedField(source='runner_accounts', queryset=SocialAccount.objects.all(), many=True, required=False, allow_null=True)
     class Meta:
         model = ScheduledTask
         fields = [
@@ -35,7 +36,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'recurrence_type', 'interval_value', 'time_of_day', 'weekday_mask', 'day_of_month', 'timezone', 'start_at', 'end_at', 'cron_expr',
             'enabled',
             'next_run_at', 'last_run_at', 'status', 'max_retries', 'rate_limit_hint',
-            'payload_template', 'tags', 'created_at', 'updated_at'
+            'payload_template', 'tags', 'runner_accounts', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -179,12 +180,15 @@ class FollowTargetSerializer(serializers.ModelSerializer):
             model = get_user_model()
             fields = ['id', 'username']
     owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
+    last_status = serializers.SerializerMethodField()
+    last_executed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = FollowTarget
         fields = [
             'id', 'owner', 'owner_detail', 'provider', 'external_user_id', 'username',
-            'display_name', 'note', 'source', 'enabled', 'created_at', 'updated_at'
+            'display_name', 'note', 'source', 'enabled', 'created_at', 'updated_at',
+            'last_status', 'last_executed_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -192,4 +196,12 @@ class FollowTargetSerializer(serializers.ModelSerializer):
         provider = (attrs.get('provider') or '').lower()
         attrs['provider'] = provider
         return attrs
+
+    def get_last_status(self, obj: FollowTarget):
+        act = obj.actions.order_by('-executed_at').first()
+        return getattr(act, 'status', None)
+
+    def get_last_executed_at(self, obj: FollowTarget):
+        act = obj.actions.order_by('-executed_at').first()
+        return act.executed_at if act else None
 

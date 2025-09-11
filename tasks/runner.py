@@ -203,7 +203,7 @@ def execute_task(task) -> Dict[str, Any]:
 
         if task.provider == 'facebook':
             fb_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
-        elif task.provider == 'twitter':
+        elif task.provider == 'twitter' and task.type != 'follow':
             tw_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
         elif task.provider == 'instagram':
             ig_handle(task, social_cfg, account, text_to_post, response, idem_guard, rate_guard)
@@ -231,77 +231,81 @@ def execute_task(task) -> Dict[str, Any]:
                     response['followed'] = []
                     return {'request_dump': request_dump, 'response': response, 'agg': {'success': True, 'duration_ms': 0, 'owner_id': task.owner_id, 'provider': task.provider, 'task_type': task.type, 'sla_met': True}, 'used': used}
 
-                # Prepare client (prefer OAuth2 user bearer; fallback OAuth1 if available)
-                consumer_key = getattr(social_cfg, 'client_id', '') or None
-                consumer_secret = getattr(social_cfg, 'client_secret', '') or None
-                access_token = account.get_access_token() if account else None
-                access_token_secret = account.get_refresh_token() if account else None
-
-                cli: TwitterClient | None = None
-                if access_token and access_token_secret and consumer_key and consumer_secret:
-                    cli = TwitterClient(
-                        consumer_key=consumer_key,
-                        consumer_secret=consumer_secret,
-                        access_token=access_token,
-                        access_token_secret=access_token_secret,
-                    )
-                if not cli:
-                    response['error'] = 'oauth1_required'
-                    raise Exception('Twitter requires OAuth1 (access_token + token_secret) for write operations in current plan')
-
-                # Get source user id
-                me = cli.get_me()
-                source_uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
-                if not source_uid:
-                    raise Exception('Cannot resolve source user id')
+                # Determine runner accounts: M2M or fallback to recent account
+                runner_accounts = list(getattr(task, 'runner_accounts').all()) if hasattr(task, 'runner_accounts') else []
+                if not runner_accounts and account:
+                    runner_accounts = [account]
 
                 # idem + local rate guard
                 rate_guard()
 
                 followed = []
-                for tgt in targets:
-                    # per-target idempotency: if already success record exists, skip
-                    if FollowAction.objects.filter(owner_id=task.owner_id, provider='twitter', target=tgt, status='success').exists():
-                        FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='skipped', error_code='already_followed')
+                for acc in runner_accounts:
+                    # Prepare OAuth1 client for this account
+                    consumer_key = getattr(social_cfg, 'client_id', '') or None
+                    consumer_secret = getattr(social_cfg, 'client_secret', '') or None
+                    access_token = acc.get_access_token() if acc else None
+                    access_token_secret = acc.get_refresh_token() if acc else None
+
+                    cli: TwitterClient | None = None
+                    if access_token and access_token_secret and consumer_key and consumer_secret:
+                        cli = TwitterClient(
+                            consumer_key=consumer_key,
+                            consumer_secret=consumer_secret,
+                            access_token=access_token,
+                            access_token_secret=access_token_secret,
+                        )
+                    if not cli:
                         continue
-                    try:
-                        target_uid = tgt.external_user_id
-                        if not target_uid and tgt.username:
-                            info = cli.get_user_by_username(tgt.username)
-                            target_uid = ((info or {}).get('data') or {}).get('id')
-                            if not target_uid:
-                                FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='failed', error_code='target_not_found')
-                                continue
-                        res = cli.follow_user(source_user_id=source_uid, target_user_id=target_uid)
-                        FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='success', response_dump=res)
-                        followed.append({'target': tgt.id, 'external_user_id': target_uid})
-                    except Exception as e:
-                        # Try extract rate limit and set block
+
+                    # Get source user id for this account
+                    me = cli.get_me()
+                    source_uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+                    if not source_uid:
+                        continue
+
+                    for tgt in targets:
+                        # per-target idempotency: if already success record exists, skip
+                        if FollowAction.objects.filter(owner_id=task.owner_id, provider='twitter', target=tgt, status='success').exists():
+                            FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='skipped', error_code='already_followed')
+                            continue
                         try:
-                            resp_obj = getattr(e, 'response', None)
-                            if resp_obj is not None:
-                                _rl = TwitterClient()._extract_rate_limit(resp_obj)
-                                response['rate_limit_headers'] = _rl
-                                status_code = getattr(resp_obj, 'status_code', None)
-                                remaining = _rl.get('x-rate-limit-remaining')
-                                reset_at = _rl.get('x-rate-limit-reset')
-                                should_block = (status_code == 429) or (remaining is not None and str(remaining) == '0')
-                                if should_block:
-                                    now_ts = int(time.time())
-                                    ttl = None
-                                    if reset_at and str(reset_at).isdigit():
-                                        ttl = int(reset_at) - now_ts + 1
-                                    if not ttl or ttl <= 0:
-                                        ttl = int(getattr(settings, 'RATE_LIMIT_DEFAULT_BACKOFF_SECONDS', 300))
-                                    cache.set(_rate_key(task.owner_id, task.provider, getattr(account, 'id', None)), 1, timeout=ttl)
-                                    response['rate_limited'] = True
-                                    response['rate_limit_blocked_seconds'] = ttl
-                        except Exception:
-                            pass
-                        FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=account, target=tgt, status='failed', error_code='follow_failed')
-                        # If rate-limited, break early
-                        if response.get('rate_limited'):
-                            break
+                            target_uid = tgt.external_user_id
+                            if not target_uid and tgt.username:
+                                info = cli.get_user_by_username(tgt.username)
+                                target_uid = ((info or {}).get('data') or {}).get('id')
+                                if not target_uid:
+                                    FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='failed', error_code='target_not_found')
+                                    continue
+                            res = cli.follow_user(source_user_id=source_uid, target_user_id=target_uid)
+                            FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='success', response_dump=res)
+                            followed.append({'target': tgt.id, 'external_user_id': target_uid, 'social_account_id': acc.id})
+                        except Exception as e:
+                            # Try extract rate limit and set block
+                            try:
+                                resp_obj = getattr(e, 'response', None)
+                                if resp_obj is not None:
+                                    _rl = TwitterClient()._extract_rate_limit(resp_obj)
+                                    response['rate_limit_headers'] = _rl
+                                    status_code = getattr(resp_obj, 'status_code', None)
+                                    remaining = _rl.get('x-rate-limit-remaining')
+                                    reset_at = _rl.get('x-rate-limit-reset')
+                                    should_block = (status_code == 429) or (remaining is not None and str(remaining) == '0')
+                                    if should_block:
+                                        now_ts = int(time.time())
+                                        ttl = None
+                                        if reset_at and str(reset_at).isdigit():
+                                            ttl = int(reset_at) - now_ts + 1
+                                        if not ttl or ttl <= 0:
+                                            ttl = int(getattr(settings, 'RATE_LIMIT_DEFAULT_BACKOFF_SECONDS', 300))
+                                        cache.set(_rate_key(task.owner_id, task.provider, getattr(acc, 'id', None)), 1, timeout=ttl)
+                                        response['rate_limited'] = True
+                                        response['rate_limit_blocked_seconds'] = ttl
+                            except Exception:
+                                pass
+                            FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='failed', error_code='follow_failed')
+                            if response.get('rate_limited'):
+                                break
 
                 response['followed'] = followed
             except Exception as e:

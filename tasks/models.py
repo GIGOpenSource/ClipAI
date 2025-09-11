@@ -46,6 +46,8 @@ class ScheduledTask(models.Model):
     rate_limit_hint = models.CharField(max_length=50, blank=True)
     sla_seconds = models.IntegerField(null=True, blank=True, help_text='SLA 目标秒数（可选）')
     payload_template = models.JSONField(default=dict, help_text='任务载荷模板（如发帖内容占位等）')
+    # 平台账号（多选），用于如关注任务批量执行；为空则按最近更新账号
+    runner_accounts = models.ManyToManyField('social.SocialAccount', blank=True, related_name='runner_tasks', help_text='执行用平台账号（多选）')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
