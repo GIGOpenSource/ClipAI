@@ -190,7 +190,9 @@ def execute_task(task) -> Dict[str, Any]:
             response['rate_limited'] = True
             raise Exception('Rate limit blocked - skipped')
         def idem_guard():
-            idem = _idem_key(task, (task.payload_template or {}))
+            # 对发帖任务，使用最终将要发布的文本参与幂等计算，避免固定 payload_template 被去重
+            base_for_idem = (text_to_post or '').strip() if task.type == 'post' else (task.payload_template or {})
+            idem = _idem_key(task, base_for_idem)
             if _idem_seen_before(idem):
                 response['skipped'] = 'idempotent_duplicate'
                 raise Exception('Skipped duplicate by idempotency key')
