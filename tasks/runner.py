@@ -294,6 +294,11 @@ def execute_task(task) -> Dict[str, Any]:
                                         continue
                                 res = cli.follow_user(source_user_id=source_uid, target_user_id=target_uid)
                                 FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='success', response_dump=res)
+                                try:
+                                    tgt.completed = True
+                                    tgt.save(update_fields=['completed', 'updated_at'])
+                                except Exception:
+                                    pass
                                 followed.append({'target': tgt.id, 'external_user_id': target_uid, 'social_account_id': acc.id})
                                 # 任一账号成功则该目标完成
                                 break
@@ -377,7 +382,7 @@ def execute_task(task) -> Dict[str, Any]:
 def _select_follow_targets(task, owner_id: int) -> list[FollowTarget]:
     payload = task.payload_template or {}
     ids = payload.get('target_ids') or []
-    qs = FollowTarget.objects.filter(owner_id=owner_id, provider=task.provider)
+    qs = FollowTarget.objects.filter(owner_id=owner_id, provider=task.provider, completed=False)
     if ids:
         return list(qs.filter(id__in=ids, enabled=True)[:100])
     # 默认：从启用清单取前N个

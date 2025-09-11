@@ -187,7 +187,7 @@ class TagSerializer(serializers.ModelSerializer):
 
 
 class FollowTargetSerializer(serializers.ModelSerializer):
-    owner = serializers.PrimaryKeyRelatedField(queryset=get_user_model().objects.all(), required=False)
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
     provider = serializers.CharField(required=False, default='twitter')
     class OwnerBriefSerializer(serializers.ModelSerializer):
         class Meta:
@@ -202,7 +202,7 @@ class FollowTargetSerializer(serializers.ModelSerializer):
         model = FollowTarget
         fields = [
             'id', 'owner', 'owner_detail', 'provider', 'external_user_id', 'username',
-            'display_name', 'note', 'source', 'enabled', 'created_at', 'updated_at',
+            'display_name', 'note', 'source', 'enabled', 'completed', 'created_at', 'updated_at',
             'last_status', 'last_executed_at', 'runner_accounts'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -221,12 +221,6 @@ class FollowTargetSerializer(serializers.ModelSerializer):
         attrs['provider'] = provider
         if provider != 'twitter':
             raise serializers.ValidationError('关注目标目前仅支持 twitter')
-        # 非管理员强制归属当前用户；管理员可指定 owner
-        if request and request.user and request.user.is_authenticated and not request.user.is_staff:
-            attrs['owner'] = request.user
-        elif 'owner' not in attrs and request and request.user and request.user.is_authenticated:
-            # 若未显式提供 owner，也默认当前用户
-            attrs['owner'] = request.user
         return attrs
 
     def get_last_status(self, obj: FollowTarget):

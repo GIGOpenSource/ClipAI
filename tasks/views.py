@@ -204,6 +204,8 @@ class FollowTargetViewSet(viewsets.ModelViewSet):
             owner_id = self.request.query_params.get('owner_id')
             if owner_id:
                 qs = qs.filter(owner_id=owner_id)
+            else:
+                qs = qs.filter(owner_id=user.id)
         else:
             uid = user.id if user and user.is_authenticated else None
             qs = qs.filter(owner_id=uid) if uid else qs.none()
@@ -220,7 +222,18 @@ class FollowTargetViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        if user and user.is_authenticated and not user.is_staff:
+        # 规则：未传 owner_id 默认使用自己的 user_id；管理员若传 owner_id 则按传入，否则也用自己的
+        owner_id = self.request.query_params.get('owner_id')
+        if user and user.is_authenticated:
+            if user.is_staff and owner_id:
+                try:
+                    from django.contrib.auth import get_user_model
+                    owner_obj = get_user_model().objects.filter(id=owner_id).first()
+                    if owner_obj:
+                        serializer.save(owner=owner_obj)
+                        return
+                except Exception:
+                    pass
             serializer.save(owner=user)
         else:
             serializer.save()

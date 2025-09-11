@@ -148,6 +148,7 @@ class FollowTarget(models.Model):
     note = models.CharField(max_length=200, blank=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
     enabled = models.BooleanField(default=False)
+    completed = models.BooleanField(default=False, help_text='是否已完成任务（True 后不再作为候选）')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # 为该目标指定执行账号（多选）；为空则按最近更新账号
