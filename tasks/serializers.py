@@ -38,7 +38,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
     keyword_config = serializers.SerializerMethodField()
     prompt_config = serializers.SerializerMethodField()
     tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
-    is_completed = serializers.SerializerMethodField()
+    completed = serializers.SerializerMethodField()
     # Follow 专用字段
     follow_targets = FollowTargetBriefSerializer(many=True, read_only=True)
     follow_target_ids = serializers.PrimaryKeyRelatedField(queryset=FollowTarget.objects.all(), many=True, required=False, write_only=True)
@@ -56,7 +56,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'next_run_at', 'last_run_at', 'status', 'max_retries', 'rate_limit_hint',
             'payload_template',
             'follow_targets', 'follow_target_ids', 'follow_max_per_run', 'follow_daily_cap',
-            'tags', 'created_at', 'updated_at', 'is_completed'
+            'tags', 'created_at', 'updated_at', 'completed'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -131,7 +131,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
 
         return attrs
 
-    def get_is_completed(self, obj: ScheduledTask) -> bool:
+    def get_completed(self, obj: ScheduledTask) -> bool:
         try:
             if (getattr(obj, 'type', '') or '').lower() != 'follow':
                 return False
