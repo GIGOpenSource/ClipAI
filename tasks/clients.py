@@ -1,6 +1,5 @@
 import requests
 from requests_oauthlib import OAuth1
-import tweepy
 
 
 class FacebookClient:
@@ -54,18 +53,11 @@ class TwitterClient:
             # Free 计划下不支持写入；保底使用 Bearer 仅返回 403，由上层处理
             resp = requests.request(method, url, json=json_payload, headers=self._headers(), timeout=20)
         elif self._oauth1:
-            # 对于只读接口优先用官方 SDK（tweepy）
+            # 统一使用 requests+OAuth1，避免与 tweepy 的内部属性不兼容
             if method == 'GET' and path == '/users/me':
-                # tweepy.Client with OAuth1 user keys
-                # tweepy 4.x: Client(consumer_key=..., consumer_secret=..., access_token=..., access_token_secret=...)
-                client = tweepy.Client(consumer_key=self._oauth1.client.client_key,
-                                       consumer_secret=self._oauth1.client.client_secret,
-                                       access_token=self._oauth1.resource_owner_key,
-                                       access_token_secret=self._oauth1.resource_owner_secret)
-                me = client.get_me(user_auth=True)
-                return me.data.data if hasattr(me, 'data') and hasattr(me.data, 'data') else (me.data or {})
-            # 其他读接口暂用 requests+OAuth1
-            resp = requests.request(method, url, json=json_payload, auth=self._oauth1, timeout=20)
+                resp = requests.get(url, auth=self._oauth1, timeout=20)
+            else:
+                resp = requests.request(method, url, json=json_payload, auth=self._oauth1, timeout=20)
         else:
             resp = requests.request(method, url, json=json_payload, headers=self._headers(), timeout=20)
         resp.raise_for_status()
