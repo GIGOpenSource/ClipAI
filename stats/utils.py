@@ -75,17 +75,8 @@ def rebuild_daily_stats(date_start: _date, date_end: _date, owner_id: int | None
     if owner_id is not None:
         qs = qs.filter(owner_id=owner_id)
 
-    grouped = qs.annotate(day=timezone.localtime(F('started_at')).date()).values('owner_id', 'provider', 'task_type', 'day')
-    # 上面 annotate 不易直接在 ORM 中取本地 date，这里改为按 day 分组：
-    grouped = qs.annotate(day=timezone.localtime(F('started_at'))).values('owner_id').annotate(
-        ins=Count('id', filter=Q(success=True, provider='instagram')),
-        x=Count('id', filter=Q(success=True, provider='twitter')),
-        fb=Count('id', filter=Q(success=True, provider='facebook')),
-        post_count=Count('id', filter=Q(success=True, task_type='post')),
-        reply_comment_count=Count('id', filter=Q(success=True, task_type='reply_comment')),
-        reply_message_count=Count('id', filter=Q(success=True, task_type='reply_message')),
-        total_impressions=Sum('impressions', filter=Q(success=True)),
-    )
+    # 注意：不要对 F('started_at') 调用 timezone.localtime，这会导致 'F' 对象 utcoffset 异常。
+    # 采用逐日边界过滤来统计各日聚合。
 
     # 为了准确分天，逐天计算
     rows_updated = 0
@@ -96,8 +87,8 @@ def rebuild_daily_stats(date_start: _date, date_end: _date, owner_id: int | None
         day_qs = qs.filter(started_at__gte=day_start, started_at__lte=day_end)
         owners = list(day_qs.values_list('owner_id', flat=True).distinct())
         if owner_id is not None:
-            owners = [owner_id] if owners or True else []
-        for oid in (owners or [owner_id]):
+            owners = [owner_id]
+        for oid in owners:
             if oid is None and owner_id is None and not owners:
                 continue
             o_qs = day_qs
