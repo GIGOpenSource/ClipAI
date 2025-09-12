@@ -4,7 +4,9 @@ from ..clients import InstagramClient
 
 def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any],
            idem_guard, rate_guard):
+    # 必要配置缺失：显式标错，避免误判成功
     if not (social_cfg and social_cfg.ig_business_account_id and (social_cfg.page_access_token or account)):
+        response['error'] = 'instagram_not_configured'
         return
     idem_guard()
     rate_guard()
@@ -19,5 +21,14 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
         creation_id = (created or {}).get('id')
         if creation_id:
             response['ig_media'] = ig.publish_media(creation_id=creation_id)
+        else:
+            response['error'] = 'ig_create_media_failed'
+            return
+    elif task.type in {'reply_comment', 'reply_message'}:
+        response['error'] = 'unsupported_task_type'
+        return
+    else:
+        response['error'] = 'unsupported_task_type'
+        return
 
 

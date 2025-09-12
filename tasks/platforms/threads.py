@@ -15,6 +15,7 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
     api_version = getattr(social_cfg, 'api_version', 'v1.0')
 
     if not (access_token and user_id):
+        response['error'] = 'threads_not_configured'
         return
 
     idem_guard()
@@ -24,5 +25,8 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
 
     if task.type == 'post':
         response['threads_post'] = cli.post_text(text_to_post)
+    else:
+        response['error'] = 'unsupported_task_type'
+        return
 
 

@@ -7,7 +7,9 @@ import requests
 
 def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any],
            idem_guard, rate_guard):
+    # 必要配置缺失：标记为错误，避免误计为成功
     if not (social_cfg and social_cfg.page_id and (social_cfg.page_access_token or account)):
+        response['error'] = 'facebook_not_configured'
         return
     idem_guard()
     rate_guard()
@@ -43,5 +45,13 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
                 cache.set(f"replied:fb:{task.owner_id}:{cid}", 1, 7*24*3600)
             except Exception:
                 pass
+    elif task.type == 'reply_message':
+        # 暂不支持私信/消息回复：显式标记为不支持，避免记为成功
+        response['error'] = 'unsupported_task_type'
+        return
+    else:
+        # 其它未实现类型
+        response['error'] = 'unsupported_task_type'
+        return
 
 
