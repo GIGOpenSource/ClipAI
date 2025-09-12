@@ -393,14 +393,15 @@ class FollowTargetViewSet(viewsets.ModelViewSet):
                                 access_token=access_token, access_token_secret=access_token_secret)
         if not cli:
             return Response({'detail': '缺少有效的 Twitter 凭据'}, status=400)
-        # 获取自身 user id
-        try:
-            me = cli.get_me()
-        except Exception as e:
-            return Response({'detail': '获取用户信息失败', 'error': str(e)}, status=400)
-        uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+        # 获取自身 user id：优先使用绑定账号 external_user_id，避免额外请求
+        uid = account.external_user_id
         if not uid:
-            return Response({'detail': '无法识别用户ID'}, status=400)
+            try:
+                from .tasks import sync_twitter_following_async
+                sync_twitter_following_async.delay(account.id)
+            except Exception:
+                pass
+            return Response({'status': 'queued', 'detail': '已排队解析用户ID并同步'}, status=202)
         # 分页拉取 following 列表
         saved = 0
         token = None

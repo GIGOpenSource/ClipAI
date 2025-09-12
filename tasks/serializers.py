@@ -33,10 +33,10 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             fields = ['id', 'username', 'email', 'first_name', 'last_name']
 
     owner_detail = OwnerBriefSerializer(source='owner', read_only=True)
-    social_config = serializers.SerializerMethodField()
-    ai_config = serializers.SerializerMethodField()
-    keyword_config = serializers.SerializerMethodField()
-    prompt_config = serializers.SerializerMethodField()
+    social_config = serializers.SerializerMethodField(required=False)
+    ai_config = serializers.SerializerMethodField(required=False)
+    keyword_config = serializers.SerializerMethodField(required=False)
+    prompt_config = serializers.SerializerMethodField(required=False)
     tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
     completed = serializers.SerializerMethodField()
     # Follow 专用字段
