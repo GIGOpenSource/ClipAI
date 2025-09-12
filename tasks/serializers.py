@@ -152,6 +152,18 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         follow_target_ids = validated_data.pop('follow_target_ids', None)
+        # 当普通用户未显式传 ai_config_id 时，自动选择默认 AIConfig
+        try:
+            req = self.context.get('request') if isinstance(self.context, dict) else None
+            is_staff = bool(req and req.user and req.user.is_authenticated and req.user.is_staff)
+            has_ai_cfg = bool(validated_data.get('ai_config_id'))
+            if not has_ai_cfg:
+                qs = AIConfig.objects.filter(enabled=True)
+                cfg = qs.filter(is_default=True).first() or qs.order_by('-priority', 'name').first()
+                if cfg and not is_staff:
+                    validated_data['ai_config_id'] = cfg.id
+        except Exception:
+            pass
         instance = super().create(validated_data)
         try:
             if follow_target_ids is not None:
