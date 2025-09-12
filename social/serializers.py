@@ -35,26 +35,6 @@ class SocialAccountSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         access_token = validated_data.pop('access_token', None)
         refresh_token = validated_data.pop('refresh_token', None)
-        # 当普通用户未显式传 config 时，自动选择该平台的默认 SocialConfig
-        try:
-            request = self.context.get('request') if isinstance(self.context, dict) else None
-            has_config = bool(validated_data.get('config'))
-            provider = (validated_data.get('provider') or '').lower()
-            is_staff = bool(request and request.user and request.user.is_authenticated and request.user.is_staff)
-            if not has_config and provider:
-                qs = SocialConfig.objects.filter(provider=provider, enabled=True)
-                cfg = None
-                # 优先选择当前用户的默认/最高优先级配置（仅针对非管理员）
-                if request and request.user and request.user.is_authenticated and not is_staff:
-                    owner_qs = qs.filter(owner_id=request.user.id)
-                    cfg = owner_qs.filter(is_default=True).first() or owner_qs.order_by('-priority', 'name').first()
-                # 兜底选择全局默认/最高优先级
-                if not cfg:
-                    cfg = qs.filter(is_default=True).first() or qs.order_by('-priority', 'name').first()
-                if cfg:
-                    validated_data['config'] = cfg
-        except Exception:
-            pass
         account = super().create(validated_data)
         if access_token is not None:
             account.set_access_token(access_token)
