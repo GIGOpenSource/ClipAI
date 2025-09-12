@@ -184,6 +184,7 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         return {k: getattr(obj, k) for k in fields}
 
     def get_social_config(self, obj):
+        print('get_social_config', obj.social_config_id)
         if not obj.social_config_id:
             return None
         cfg = SocialConfig.objects.filter(id=obj.social_config_id).first()
