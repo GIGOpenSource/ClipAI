@@ -13,6 +13,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from accounts.permissions import IsStaffUser
 from tasks.models import TaskRun
 from .models import DailyStat
+from .utils import rebuild_daily_stats
 from social.models import SocialAccount
 from .serializers import OverviewResponseSerializer, SummaryResponseSerializer, ProviderBreakdownItemSerializer, TypeBreakdownItemSerializer, TaskRunItemSerializer, OverviewV2ResponseSerializer, TrendItemSerializer, DailyTableItemSerializer
 
@@ -392,3 +393,47 @@ class OverviewExportView(APIView):
 
 
 # Create your views here.
+
+
+class RebuildNowView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary='立即重建指定日期范围的按天统计（基于已有 TaskRun）',
+        description='管理员可指定 owner_id；普通用户仅可重建自己的数据。默认最近30天。支持传 date_from、date_to（YYYY-MM-DD 或 ISO8601）。',
+        tags=['数据统计'],
+        parameters=[
+            OpenApiParameter(name='owner_id', description='（管理员）按用户过滤；普通用户忽略', required=False, type=str),
+            OpenApiParameter(name='date_from', description='起始日期/时间', required=False, type=str),
+            OpenApiParameter(name='date_to', description='结束日期/时间', required=False, type=str),
+        ]
+    )
+    def post(self, request):
+        # 解析日期范围
+        df = _parse_date(request.data.get('date_from') or request.query_params.get('date_from'))
+        dt = _parse_date(request.data.get('date_to') or request.query_params.get('date_to'))
+        if not dt:
+            dt = timezone.now().date()
+        if not df:
+            df = dt - timedelta(days=29)
+        if df > dt:
+            df, dt = dt, df
+
+        # 确定 owner 范围
+        owner_param = request.data.get('owner_id') or request.query_params.get('owner_id')
+        owner_scope = None
+        if request.user and request.user.is_authenticated and request.user.is_staff:
+            owner_scope = int(owner_param) if owner_param else None
+        else:
+            owner_scope = request.user.id if (request.user and request.user.is_authenticated) else None
+
+        # 重建并返回结果
+        rows = rebuild_daily_stats(df, dt, owner_id=owner_scope)
+        stats_qs = DailyStat.objects.filter(date__gte=df, date__lte=dt)
+        if owner_scope is not None:
+            stats_qs = stats_qs.filter(owner_id=owner_scope)
+        data = list(stats_qs.values(
+            'date', 'owner_id', 'account_count', 'ins', 'x', 'fb', 'post_count',
+            'reply_comment_count', 'reply_message_count', 'total_impressions', 'updated_at'
+        ).order_by('-date'))
+        return Response({'rows_updated': rows, 'data': data})

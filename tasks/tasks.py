@@ -155,22 +155,24 @@ def check_scheduled_tasks():
     start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
     end = timezone.make_aware(datetime.combine(today, datetime.max.time()))
     runs = TaskRun.objects.filter(started_at__gte=start, started_at__lte=end)
-    # 按 owner_id 分组聚合，分别写入 DailyStat
+    # 按 owner_id 分组聚合，仅统计成功任务
     rows = runs.values('owner_id').annotate(
-        account_count=Count('social_config_id_used', distinct=True),
-        ins=Count('id', filter=Q(provider='instagram')),
-        x=Count('id', filter=Q(provider='twitter')),
-        fb=Count('id', filter=Q(provider='facebook')),
-        post_count=Count('id', filter=Q(task_type='post')),
-        reply_comment_count=Count('id', filter=Q(task_type='reply_comment')),
-        reply_message_count=Count('id', filter=Q(task_type='reply_message')),
-        total_impressions=Sum('impressions'),
+        ins=Count('id', filter=Q(success=True, provider='instagram')),
+        x=Count('id', filter=Q(success=True, provider='twitter')),
+        fb=Count('id', filter=Q(success=True, provider='facebook')),
+        post_count=Count('id', filter=Q(success=True, task_type='post')),
+        reply_comment_count=Count('id', filter=Q(success=True, task_type='reply_comment')),
+        reply_message_count=Count('id', filter=Q(success=True, task_type='reply_message')),
+        total_impressions=Sum('impressions', filter=Q(success=True)),
     )
     for r in rows:
+        # account_count 使用当前活跃账号数近似
+        from social.models import SocialAccount as _SA
+        active_accounts = _SA.objects.filter(owner_id=r['owner_id'], status='active').count() if r['owner_id'] is not None else 0
         DailyStat.objects.update_or_create(
             date=today, owner_id=r['owner_id'],
             defaults={
-                'account_count': r.get('account_count') or 0,
+                'account_count': active_accounts,
                 'ins': r.get('ins') or 0,
                 'x': r.get('x') or 0,
                 'fb': r.get('fb') or 0,
