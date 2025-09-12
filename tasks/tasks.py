@@ -184,3 +184,97 @@ def check_scheduled_tasks():
         )
 
 
+@shared_task
+def sync_twitter_following_async(account_id: int):
+    """Resolve account's external_user_id if missing, then sync following into FollowTarget.
+
+    Returns a dict with summary counts or error.
+    """
+    try:
+        from social.models import SocialAccount, SocialConfig
+        from .models import FollowTarget
+        from .clients import TwitterClient
+    except Exception as e:
+        return {'error': f'import_failed: {e}'}
+
+    acc = SocialAccount.objects.filter(id=account_id, provider='twitter', status='active').first()
+    if not acc:
+        return {'error': 'account_not_found'}
+
+    # Build client (prefer OAuth2 bearer; fallback to OAuth1)
+    bearer = None
+    consumer_key = None
+    consumer_secret = None
+    access_token = None
+    access_token_secret = None
+    try:
+        bearer = acc.get_access_token() or None
+    except Exception:
+        bearer = None
+    if not bearer:
+        try:
+            access_token = acc.get_access_token() or None
+            access_token_secret = acc.get_refresh_token() or None
+        except Exception:
+            access_token = None
+            access_token_secret = None
+        cfg = SocialConfig.objects.filter(provider='twitter', owner_id=acc.owner_id).order_by('-is_default', '-priority').first()
+        if cfg and cfg.client_id and cfg.client_secret:
+            consumer_key = cfg.client_id
+            consumer_secret = cfg.client_secret
+
+    cli = None
+    if bearer:
+        cli = TwitterClient(bearer_token=bearer)
+    elif access_token and access_token_secret:
+        cli = TwitterClient(consumer_key=consumer_key, consumer_secret=consumer_secret,
+                            access_token=access_token, access_token_secret=access_token_secret)
+    if not cli:
+        return {'error': 'missing_credentials'}
+
+    # Ensure external_user_id
+    uid = acc.external_user_id
+    if not uid:
+        try:
+            me = cli.get_me()
+            uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+            if uid:
+                acc.external_user_id = str(uid)
+                acc.save(update_fields=['external_user_id', 'updated_at'])
+        except Exception as e:
+            return {'error': f'resolve_uid_failed: {e}'}
+    if not uid:
+        return {'error': 'uid_missing'}
+
+    # Page through following and upsert FollowTarget
+    saved = 0
+    token = None
+    pages = 0
+    while pages < 10:
+        pages += 1
+        try:
+            page = cli.get_following(uid, pagination_token=token, max_results=100)
+        except Exception as e:
+            return {'error': f'fetch_following_failed: {e}', 'synced': saved}
+        data = (page or {}).get('data') or []
+        meta = (page or {}).get('meta') or {}
+        for u in data:
+            ext_id = (u or {}).get('id') or ''
+            username = (u or {}).get('username') or ''
+            name = (u or {}).get('name') or ''
+            if not ext_id:
+                continue
+            FollowTarget.objects.update_or_create(
+                owner_id=acc.owner_id,
+                provider='twitter',
+                external_user_id=str(ext_id),
+                defaults={'username': username, 'display_name': name, 'source': 'imported', 'enabled': False}
+            )
+            saved += 1
+        token = meta.get('next_token')
+        if not token:
+            break
+
+    return {'status': 'ok', 'synced': saved, 'pages': pages}
+
+
