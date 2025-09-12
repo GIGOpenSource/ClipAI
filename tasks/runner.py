@@ -1,6 +1,5 @@
 from typing import Dict, Any
 import time
-import hashlib
 from threading import Lock
 import re
 from django.utils import timezone
@@ -24,11 +23,6 @@ _rate_window_seconds = 60
 _rate_limit_per_window = 30  # 每账号每窗口最多外呼次数（占位，可后续改为配置）
 _rate_bucket: Dict[str, list[float]] = {}
 
-_idem_lock = Lock()
-_idem_ttl_seconds = 3600
-_idem_seen: Dict[str, float] = {}
-
-
 def _rate_key(owner_id: int | None, provider: str, account_id: int | None) -> str:
     return f"{owner_id or 0}:{provider}:{account_id or 0}"
 
@@ -48,24 +42,6 @@ def _rate_allow(owner_id: int | None, provider: str, account_id: int | None) -> 
             _rate_bucket[key] = lst
         return allowed
 
-
-def _idem_key(task, payload: Dict[str, Any]) -> str:
-    raw = f"{task.id}:{task.type}:{task.provider}:{payload}"
-    return hashlib.sha256(raw.encode()).hexdigest()
-
-
-def _idem_seen_before(key: str) -> bool:
-    now = time.time()
-    with _idem_lock:
-        # 清理过期
-        for k, ts in list(_idem_seen.items()):
-            if now - ts > _idem_ttl_seconds:
-                _idem_seen.pop(k, None)
-        if key in _idem_seen:
-            return True
-        _idem_seen[key] = now
-        return False
- 
 
 
 def execute_task(task) -> Dict[str, Any]:
@@ -191,12 +167,8 @@ def execute_task(task) -> Dict[str, Any]:
             response['rate_limited'] = True
             raise Exception('Rate limit blocked - skipped')
         def idem_guard():
-            # 对发帖任务，使用最终将要发布的文本参与幂等计算，避免固定 payload_template 被去重
-            base_for_idem = (text_to_post or '').strip() if task.type == 'post' else (task.payload_template or {})
-            idem = _idem_key(task, base_for_idem)
-            if _idem_seen_before(idem):
-                response['skipped'] = 'idempotent_duplicate'
-                raise Exception('Skipped duplicate by idempotency key')
+            # 全局关闭幂等拦截
+            return
 
         def rate_guard():
             if not _rate_allow(task.owner_id, provider, getattr(account, 'id', None)):
