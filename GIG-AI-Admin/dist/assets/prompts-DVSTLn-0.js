@@ -1,0 +1,1 @@
+import{g as o,p as r,a as t,d as a}from"./http-VbNDWnN5.js";const g=s=>o("/prompts/configs/",{params:s}),c=s=>t("/prompts/configs/admin_create/",s),e=(s,p)=>r(`/prompts/configs/${s}/`,p),m=s=>a(`/prompts/configs/${s}/`),i=s=>o(`/prompts/configs/${s}/`),f=s=>t("/prompts/configs/",s);export{i as a,c as b,f as c,m as d,g,e as u};

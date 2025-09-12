@@ -1,0 +1,1 @@
+import{g as t,d as a,p as l,a as e}from"./http-VbNDWnN5.js";const c=s=>t("/tasks/follow-targets/",{params:s}),r=s=>t("/ai/configs/picker/",{params:s}),w=s=>t(`/tasks/follow-targets/${s}/`),f=s=>e("/tasks/follow-targets/",s),n=(s,o)=>l(`/tasks/follow-targets/${s}/`,o),p=s=>a(`/tasks/follow-targets/${s}/`);export{c as a,w as b,f as c,p as d,r as g,n as u};
