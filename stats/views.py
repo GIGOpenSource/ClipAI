@@ -1,6 +1,8 @@
 from django.db.models import Count, Avg, Q, Sum
 from django.db.models.functions import TruncDay, TruncHour
 from django.utils.dateparse import parse_datetime
+from datetime import datetime, timedelta, date
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +13,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from accounts.permissions import IsStaffUser
 from tasks.models import TaskRun
 from .models import DailyStat
+from social.models import SocialAccount
 from .serializers import OverviewResponseSerializer, SummaryResponseSerializer, ProviderBreakdownItemSerializer, TypeBreakdownItemSerializer, TaskRunItemSerializer, OverviewV2ResponseSerializer, TrendItemSerializer, DailyTableItemSerializer
 
 
@@ -42,6 +45,135 @@ def _filters(request):
     if date_to:
         qs = qs.filter(started_at__lte=parse_datetime(date_to))
     return qs
+
+
+def _parse_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        # Accept YYYY-MM-DD or full datetime; always convert to date in server tz
+        dt = parse_datetime(value)
+        if dt is None:
+            return datetime.fromisoformat(value).date()
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_default_timezone())
+        return dt.astimezone(timezone.get_default_timezone()).date()
+    except Exception:
+        return None
+
+
+def _daterange(start: date, end: date):
+    current = start
+    while current <= end:
+        yield current
+        current = current + timedelta(days=1)
+
+
+def _rebuild_daily_stats(request, date_start: date, date_end: date):
+    """Recompute DailyStat from TaskRun for the requested scope and date range.
+    Rules:
+    - Only count success=True for action counts
+    - Provider mapping: instagram→ins, twitter→x, facebook→fb
+    - post_count / reply_comment_count / reply_message_count based on task_type
+    - total_impressions is sum of impressions for success=True
+    - account_count: number of active social accounts for owner on that day (approximate by current active count)
+    """
+    task_qs = _filters(request)
+    if not task_qs.exists():
+        # Still ensure DailyStat rows exist as zero rows for the range
+        owner_ids = []
+        if request.user and request.user.is_authenticated and not request.user.is_staff:
+            owner_ids = [request.user.id]
+        elif request.user and request.user.is_staff:
+            owner_param = request.query_params.get('owner_id')
+            if owner_param:
+                owner_ids = [int(owner_param)]
+        for d in _daterange(date_start, date_end):
+            if owner_ids:
+                for oid in owner_ids:
+                    DailyStat.objects.update_or_create(
+                        date=d, owner_id=oid,
+                        defaults=dict(
+                            account_count=SocialAccount.objects.filter(owner_id=oid, status='active').count(),
+                            ins=0, x=0, fb=0, post_count=0,
+                            reply_comment_count=0, reply_message_count=0,
+                            total_impressions=0,
+                        )
+                    )
+            else:
+                DailyStat.objects.update_or_create(
+                    date=d, owner_id=None,
+                    defaults=dict(
+                        account_count=0, ins=0, x=0, fb=0, post_count=0,
+                        reply_comment_count=0, reply_message_count=0, total_impressions=0,
+                    )
+                )
+        return
+
+    # Restrict by date range for TaskRun
+    start_dt = datetime.combine(date_start, datetime.min.time()).astimezone(timezone.get_default_timezone())
+    end_dt = datetime.combine(date_end, datetime.max.time()).astimezone(timezone.get_default_timezone())
+    task_qs = task_qs.filter(started_at__gte=start_dt, started_at__lte=end_dt)
+
+    grouped = task_qs.annotate(day=TruncDay('started_at')).values('day', 'owner_id').annotate(
+        ins=Count('id', filter=Q(success=True, provider='instagram')),
+        x=Count('id', filter=Q(success=True, provider='twitter')),
+        fb=Count('id', filter=Q(success=True, provider='facebook')),
+        post_count=Count('id', filter=Q(success=True, task_type='post')),
+        reply_comment_count=Count('id', filter=Q(success=True, task_type='reply_comment')),
+        reply_message_count=Count('id', filter=Q(success=True, task_type='reply_message')),
+        total_impressions=Sum('impressions', filter=Q(success=True)),
+    )
+
+    # Prepare account counts per owner (approximate as current active accounts)
+    owner_ids = {row['owner_id'] for row in grouped}
+    owner_to_acc = {oid: SocialAccount.objects.filter(owner_id=oid, status='active').count() for oid in owner_ids if oid}
+
+    # Upsert DailyStat per (day, owner)
+    seen_keys = set()
+    for row in grouped:
+        d = row['day'].date()
+        oid = row['owner_id']
+        seen_keys.add((d, oid))
+        DailyStat.objects.update_or_create(
+            date=d, owner_id=oid,
+            defaults=dict(
+                account_count=owner_to_acc.get(oid, 0),
+                ins=row['ins'] or 0,
+                x=row['x'] or 0,
+                fb=row['fb'] or 0,
+                post_count=row['post_count'] or 0,
+                reply_comment_count=row['reply_comment_count'] or 0,
+                reply_message_count=row['reply_message_count'] or 0,
+                total_impressions=row['total_impressions'] or 0,
+            )
+        )
+
+    # Zero-fill missing dates within range for the relevant owner scope
+    owner_scope: list[int | None] = []
+    if request.user and request.user.is_authenticated and not request.user.is_staff:
+        owner_scope = [request.user.id]
+    elif request.user and request.user.is_staff:
+        owner_param = request.query_params.get('owner_id')
+        if owner_param:
+            try:
+                owner_scope = [int(owner_param)]
+            except Exception:
+                owner_scope = []
+    # Only zero-fill when scope明确，避免对全量用户做空洞填充造成压力
+    if owner_scope:
+        for d in _daterange(date_start, date_end):
+            for oid in owner_scope:
+                if (d, oid) not in seen_keys:
+                    DailyStat.objects.update_or_create(
+                        date=d, owner_id=oid,
+                        defaults=dict(
+                            account_count=SocialAccount.objects.filter(owner_id=oid, status='active').count(),
+                            ins=0, x=0, fb=0, post_count=0,
+                            reply_comment_count=0, reply_message_count=0,
+                            total_impressions=0,
+                        )
+                    )
 
 
 class SummaryView(APIView):
@@ -121,8 +253,18 @@ class OverviewView(APIView):
     )
     def get(self, request):
         qs = _filters(request)
-        # 先从 DailyStat 读取；缺失的日期再按需增量计算并保存，避免重复聚合
-        stats_qs = DailyStat.objects.all()
+        # 刷新指定日期范围的数据，再从 DailyStat 读取，保证口径一致
+        date_from = _parse_date(request.query_params.get('date_from'))
+        date_to = _parse_date(request.query_params.get('date_to'))
+        if not date_to:
+            date_to = timezone.now().date()
+        if not date_from:
+            date_from = date_to - timedelta(days=29)
+        if date_from > date_to:
+            date_from, date_to = date_to, date_from
+        _rebuild_daily_stats(request, date_from, date_to)
+
+        stats_qs = DailyStat.objects.filter(date__gte=date_from, date__lte=date_to)
         if request.user and request.user.is_authenticated:
             if request.user.is_staff:
                 # 管理员可查看全部；若显式传 owner_id 则按其过滤
@@ -132,9 +274,6 @@ class OverviewView(APIView):
             else:
                 # 非管理员固定查看自己的数据
                 stats_qs = stats_qs.filter(owner_id=request.user.id)
-        # 若请求无范围，默认最近30天（此处省略区间限制，读取现有 DailyStat）
-        date_from = request.query_params.get('date_from')
-        date_to = request.query_params.get('date_to')
         # 管理员 aggregate=all → 按天汇总所有 owner
         if request.user.is_staff and request.query_params.get('aggregate') == 'all':
             rows = stats_qs.values('date').annotate(

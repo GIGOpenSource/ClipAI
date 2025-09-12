@@ -8,6 +8,7 @@ import os
 from django.db.models.functions import TruncDay
 from django.db.models import Count, Sum, Q
 from stats.models import DailyStat
+from stats.utils import record_success_run
 
 
 @shared_task
@@ -49,6 +50,12 @@ def execute_scheduled_task(task_id: int):
     run.save(update_fields=['finished_at'])
     task.last_run_at = run.finished_at
     task.save(update_fields=['last_run_at'])
+    # Increment lightweight daily stat on success
+    try:
+        if run.success:
+            record_success_run(owner_id=run.owner_id, provider=run.provider, task_type=run.task_type, started_date=run.started_at.date())
+    except Exception:
+        pass
     # Create SocialPost record on successful publish
     try:
         from .models import SocialPost
@@ -143,7 +150,7 @@ def check_scheduled_tasks():
                         nxt = now + timedelta(seconds=backoff)
             task.next_run_at = nxt
             task.save(update_fields=['next_run_at'])
-    # 聚合昨日已完成运行并写入 DailyStat（简化：每次扫描也顺带刷新最近一天统计）
+    # 聚合当日已完成运行并写入 DailyStat（保留基于 TaskRun 的定期刷新）
     today = now.date()
     start = timezone.make_aware(datetime.combine(today, datetime.min.time()))
     end = timezone.make_aware(datetime.combine(today, datetime.max.time()))

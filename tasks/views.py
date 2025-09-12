@@ -11,6 +11,7 @@ from .tasks import execute_scheduled_task
 from .runner import execute_task, generate_ai_preview
 from .clients import TwitterClient
 from social.models import SocialAccount
+from stats.utils import record_success_run
 
 
 @extend_schema_view(
@@ -220,6 +221,13 @@ class ScheduledTaskViewSet(viewsets.ModelViewSet):
         run.save(update_fields=['finished_at'])
         task.last_run_at = run.finished_at
         task.save(update_fields=['last_run_at'])
+
+        # Increment lightweight daily stat on success (simple rule): one success = +1
+        try:
+            if run.success:
+                record_success_run(owner_id=run.owner_id, provider=run.provider, task_type=run.task_type, started_date=run.started_at.date())
+        except Exception:
+            pass
         # Create SocialPost record on successful publish
         try:
             from .models import SocialPost
