@@ -46,7 +46,6 @@ pytestdebug.log
 
 # Build artifacts
 build/
-dist/
 *.egg-info/
 .eggs/
 
