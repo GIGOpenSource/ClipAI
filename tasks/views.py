@@ -396,12 +396,7 @@ class FollowTargetViewSet(viewsets.ModelViewSet):
         # 获取自身 user id：优先使用绑定账号 external_user_id，避免额外请求
         uid = account.external_user_id
         if not uid:
-            try:
-                from .tasks import sync_twitter_following_async
-                sync_twitter_following_async.delay(account.id)
-            except Exception:
-                pass
-            return Response({'status': 'queued', 'detail': '已排队解析用户ID并同步'}, status=202)
+            return Response({'status': 'skipped', 'detail': 'external_user_id 为空，未执行同步', 'synced': 0})
         # 分页拉取 following 列表
         saved = 0
         token = None
