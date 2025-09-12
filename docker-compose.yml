@@ -8,6 +8,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./home:/opt/home:ro
+      - ./GIG-AI-Admin/dist:/opt/app:ro
       - ./staticfiles:/opt/staticfiles:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro

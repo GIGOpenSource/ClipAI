@@ -1,0 +1,1 @@
+import{g as t,p as g,a as e,d as o}from"./http-BKvr1fmS.js";const p=s=>t("/tasks/tags/",{params:s}),d=s=>e("/tasks/tags/",s),k=(s,a)=>g(`/tasks/tags/${s}/`,a),n=s=>o(`/tasks/tags/${s}/`);export{d as c,n as d,p as g,k as u};
