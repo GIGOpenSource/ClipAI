@@ -48,6 +48,120 @@ class ScheduledTaskViewSet(viewsets.ModelViewSet):
             serializer.save()
 
     @extend_schema(
+        summary='一键配置 Twitter 关注（创建/更新 FollowTarget + 创建/更新 ScheduledTask）',
+        description=(
+            """
+除立即执行外，将关注目标与任务调度整合为单一接口；原有接口保持不变。仅支持 provider=twitter，type=follow。
+
+请求示例：
+{
+  "owner_id": 1,              // 管理员可指定；普通用户忽略
+  "targets": [                 // 可选：批量增改关注目标
+    {"external_user_id":"123", "username":"elonmusk", "enabled":true, "runner_account_ids":[5,6]}
+  ],
+  "task": {                    // 必填：创建或更新调度任务
+    "id": null,               // 传 id 则更新；不传则创建
+    "recurrence_type":"hourly", "interval_value":1, "enabled":true,
+    "payload_template": {"max_per_run":5, "daily_cap":30},
+    "social_config_id": null, "keyword_config_id": null, "prompt_config_id": null
+  }
+}
+            """
+        ),
+        tags=['任务调度'],
+        responses={200: OpenApiResponse(description='已完成配置，返回任务与统计结果')}
+    )
+    @action(detail=False, methods=['post'], url_path='scheduled/setup-follow')
+    def setup_follow(self, request):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return Response({'detail': '未登录'}, status=401)
+
+        body = request.data if hasattr(request, 'data') else {}
+        # 选择 owner：普通用户强制为自己；管理员可通过 owner_id 指定
+        owner_obj = user
+        if user.is_staff:
+            try:
+                owner_id = body.get('owner_id')
+                if owner_id:
+                    from django.contrib.auth import get_user_model
+                    owner_obj = get_user_model().objects.filter(id=owner_id).first() or user
+            except Exception:
+                owner_obj = user
+        # 1) 批量 upsert 关注目标（可选）
+        targets = body.get('targets') or []
+        created_targets = []
+        updated_targets = []
+        errors = []
+        for idx, t in enumerate(targets):
+            try:
+                provider = 'twitter'
+                ext_id = (t or {}).get('external_user_id')
+                if not ext_id:
+                    raise ValueError('external_user_id 必填')
+                defaults = {
+                    'username': (t or {}).get('username') or '',
+                    'display_name': (t or {}).get('display_name') or '',
+                    'note': (t or {}).get('note') or '',
+                    'source': (t or {}).get('source') or 'manual',
+                    'enabled': bool((t or {}).get('enabled', True)),
+                }
+                obj, created = FollowTarget.objects.update_or_create(
+                    owner=owner_obj,
+                    provider=provider,
+                    external_user_id=str(ext_id),
+                    defaults=defaults
+                )
+                # 绑定 runner_accounts（可选）
+                try:
+                    acc_ids = (t or {}).get('runner_account_ids') or []
+                    if isinstance(acc_ids, list):
+                        qs = SocialAccount.objects.filter(id__in=acc_ids, provider='twitter')
+                        obj.runner_accounts.set(list(qs))
+                except Exception:
+                    pass
+                (created_targets if created else updated_targets).append(obj.id)
+            except Exception as e:
+                errors.append({'index': idx, 'error': str(e)})
+
+        # 2) 创建/更新 ScheduledTask（type=follow, provider=twitter）
+        task_payload = body.get('task') or {}
+        task_id = task_payload.get('id')
+        task_payload = dict(task_payload)
+        task_payload['type'] = 'follow'
+        task_payload['provider'] = 'twitter'
+        instance = None
+        if task_id:
+            instance = ScheduledTask.objects.filter(id=task_id, owner=owner_obj, type='follow', provider='twitter').first()
+            if not instance:
+                return Response({'detail': '任务不存在或无权限'}, status=404)
+        # 使用 Serializer 校验与保存
+        serializer_ctx = {'request': request}
+        if instance:
+            ser = ScheduledTaskSerializer(instance, data=task_payload, partial=True, context=serializer_ctx)
+        else:
+            ser = ScheduledTaskSerializer(data=task_payload, context=serializer_ctx)
+        if ser.is_valid():
+            if instance:
+                scheduled = ser.save()
+            else:
+                # 普通用户强制归属自己；管理员创建时使用 owner_obj
+                scheduled = ser.save(owner=owner_obj)
+        else:
+            return Response({'detail': '任务参数校验失败', 'errors': ser.errors}, status=400)
+
+        resp_data = {
+            'owner_id': owner_obj.id,
+            'scheduled_task': ScheduledTaskSerializer(scheduled).data,
+            'targets': {
+                'created_ids': created_targets,
+                'updated_ids': updated_targets,
+                'errors': errors,
+            }
+        }
+        return Response(resp_data)
+
+    @extend_schema(
         summary='立即执行任务（支持预览）',
         description='mode=preview 时仅生成 AI 文本，不外呼、不写入 TaskRun；否则执行真实/回退流程',
         tags=['任务调度'],

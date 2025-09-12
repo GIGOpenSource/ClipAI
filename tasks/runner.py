@@ -218,7 +218,9 @@ def execute_task(task) -> Dict[str, Any]:
                 # Select targets
                 daily_cap = None
                 try:
-                    daily_cap = int((task.payload_template or {}).get('daily_cap') or 0) or None
+                    # 优先使用显式字段，其次兼容 payload_template.daily_cap
+                    explicit_cap = getattr(task, 'follow_daily_cap', None)
+                    daily_cap = int(explicit_cap or (task.payload_template or {}).get('daily_cap') or 0) or None
                 except Exception:
                     daily_cap = None
                 if not _enforce_daily_cap(task.owner_id, provider, daily_cap):
@@ -384,12 +386,27 @@ def execute_task(task) -> Dict[str, Any]:
 
 def _select_follow_targets(task, owner_id: int) -> list[FollowTarget]:
     payload = task.payload_template or {}
+    # 1) 显式 M2M 绑定
+    try:
+        if hasattr(task, 'follow_targets'):
+            bound = list(task.follow_targets.all())
+            if bound:
+                return bound
+    except Exception:
+        pass
+    # 2) 兼容 legacy target_ids
     ids = payload.get('target_ids') or []
     qs = FollowTarget.objects.filter(owner_id=owner_id, provider=task.provider, completed=False)
     if ids:
         return list(qs.filter(id__in=ids, enabled=True)[:100])
-    # 默认：从启用清单取前N个
-    limit = int(payload.get('max_per_run') or 5)
+    # 3) 默认：按限制挑选（优先 follow_max_per_run 其次 payload_template.max_per_run）
+    limit = None
+    try:
+        limit = int(getattr(task, 'follow_max_per_run') or 0) or None
+    except Exception:
+        limit = None
+    if not limit:
+        limit = int(payload.get('max_per_run') or 5)
     return list(qs.filter(enabled=True).order_by('-updated_at')[:max(1, min(100, limit))])
 
 

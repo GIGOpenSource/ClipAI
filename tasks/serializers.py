@@ -14,6 +14,18 @@ DEFAULT_PAYLOAD_TEXTS = {
 }
 
 
+# Brief representation for nested follow targets inside ScheduledTask
+class FollowTargetBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FollowTarget
+        fields = [
+            'id', 'owner', 'provider', 'external_user_id', 'username',
+            'display_name', 'note', 'source', 'enabled', 'completed',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = fields
+
+
 class ScheduledTaskSerializer(serializers.ModelSerializer):
     class OwnerBriefSerializer(serializers.ModelSerializer):
         class Meta:
@@ -26,6 +38,12 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
     keyword_config = serializers.SerializerMethodField()
     prompt_config = serializers.SerializerMethodField()
     tags = serializers.PrimaryKeyRelatedField(queryset=Tag.objects.all(), many=True, required=False)
+    is_completed = serializers.SerializerMethodField()
+    # Follow 专用字段
+    follow_targets = FollowTargetBriefSerializer(many=True, read_only=True)
+    follow_target_ids = serializers.PrimaryKeyRelatedField(queryset=FollowTarget.objects.all(), many=True, required=False, write_only=True)
+    follow_max_per_run = serializers.IntegerField(required=False, allow_null=True)
+    follow_daily_cap = serializers.IntegerField(required=False, allow_null=True)
     # 移除任务级 runner_accounts（转移到 FollowTarget）
     class Meta:
         model = ScheduledTask
@@ -36,7 +54,9 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
             'recurrence_type', 'interval_value', 'time_of_day', 'weekday_mask', 'day_of_month', 'timezone', 'start_at', 'end_at', 'cron_expr',
             'enabled',
             'next_run_at', 'last_run_at', 'status', 'max_retries', 'rate_limit_hint',
-            'payload_template', 'tags', 'created_at', 'updated_at'
+            'payload_template',
+            'follow_targets', 'follow_target_ids', 'follow_max_per_run', 'follow_daily_cap',
+            'tags', 'created_at', 'updated_at', 'is_completed'
         ]
         read_only_fields = ['created_at', 'updated_at']
 
@@ -49,6 +69,8 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
         day_of_month = attrs.get('day_of_month', getattr(instance, 'day_of_month', None))
         cron_expr = attrs.get('cron_expr', getattr(instance, 'cron_expr', '')) or ''
         provider = (attrs.get('provider') or getattr(instance, 'provider', '') or '').lower()
+        # 规范化 provider，避免大小写造成的筛选失配
+        attrs['provider'] = provider
         task_type = attrs.get('type', getattr(instance, 'type', ''))
 
         def ensure(cond: bool, msg: str):
@@ -91,7 +113,62 @@ class ScheduledTaskSerializer(serializers.ModelSerializer):
                 payload['text'] = default_text
         attrs['payload_template'] = payload
 
+        # 绑定 social_config_id 的有效性校验：必须存在且 provider 匹配；普通用户必须与任务 owner 相同
+        from social.models import SocialConfig
+        cfg_id = attrs.get('social_config_id', getattr(instance, 'social_config_id', None))
+        if cfg_id is not None:
+            cfg = SocialConfig.objects.filter(id=cfg_id).first()
+            ensure(bool(cfg), 'social_config_id 不存在')
+            ensure(cfg.provider == provider, 'social_config_id 的平台与任务 provider 不一致')
+            try:
+                req = self.context.get('request') if isinstance(self.context, dict) else None
+                is_staff = bool(req and req.user and req.user.is_authenticated and req.user.is_staff)
+                # 创建时 owner 可能尚未注入，这里以请求用户校验；管理员放行
+                if not is_staff and req and req.user and req.user.is_authenticated:
+                    ensure(cfg.owner_id == req.user.id, 'social_config_id 不属于当前用户')
+            except Exception:
+                pass
+
         return attrs
+
+    def get_is_completed(self, obj: ScheduledTask) -> bool:
+        try:
+            if (getattr(obj, 'type', '') or '').lower() != 'follow':
+                return False
+            provider = (getattr(obj, 'provider', '') or '').lower()
+            if provider != 'twitter':
+                return False
+            # 优先按显式绑定的 follow_targets 判定
+            try:
+                bound_qs = getattr(obj, 'follow_targets').all()
+                if bound_qs.exists():
+                    return not bound_qs.filter(completed=False).exists()
+            except Exception:
+                pass
+            # 否则按租户+平台下是否还有待处理目标
+            return not FollowTarget.objects.filter(owner=obj.owner, provider='twitter', enabled=True, completed=False).exists()
+        except Exception:
+            return False
+
+    def create(self, validated_data):
+        follow_target_ids = validated_data.pop('follow_target_ids', None)
+        instance = super().create(validated_data)
+        try:
+            if follow_target_ids is not None:
+                instance.follow_targets.set(follow_target_ids)
+        except Exception:
+            pass
+        return instance
+
+    def update(self, instance, validated_data):
+        follow_target_ids = validated_data.pop('follow_target_ids', None)
+        instance = super().update(instance, validated_data)
+        try:
+            if follow_target_ids is not None:
+                instance.follow_targets.set(follow_target_ids)
+        except Exception:
+            pass
+        return instance
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

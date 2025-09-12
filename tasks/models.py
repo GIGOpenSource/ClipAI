@@ -45,7 +45,10 @@ class ScheduledTask(models.Model):
     max_retries = models.IntegerField(default=3)
     rate_limit_hint = models.CharField(max_length=50, blank=True)
     sla_seconds = models.IntegerField(null=True, blank=True, help_text='SLA 目标秒数（可选）')
-    payload_template = models.JSONField(default=dict, help_text='任务载荷模板（如发帖内容占位等）')
+    payload_template = models.JSONField(default=dict, help_text='任务载荷模板（如发帖内容占位等；follow 类型不建议使用此处 target_ids 配置，改用字段）')
+    # Follow 专用显式字段（替代 payload_template 中的隐式配置）
+    follow_max_per_run = models.IntegerField(default=5, null=True, blank=True, help_text='关注任务：每次最多处理的目标数量（默认 5；优先生效于 payload_template.max_per_run）')
+    follow_daily_cap = models.IntegerField(default=0, null=True, blank=True, help_text='关注任务：当日成功关注上限（默认 0 表示不限；优先生效于 payload_template.daily_cap）')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -164,6 +167,9 @@ class FollowTarget(models.Model):
 
     def __str__(self) -> str:
         return f"{self.provider}:{self.username or self.external_user_id}"
+
+# ScheduledTask 绑定关注目标（在 FollowTarget 定义之后添加）
+ScheduledTask.add_to_class('follow_targets', models.ManyToManyField(FollowTarget, blank=True, related_name='scheduled_tasks', help_text='关注任务：指定本任务要处理的目标清单（留空则按默认挑选）'))
 
 
 class FollowAction(models.Model):
