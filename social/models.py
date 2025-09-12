@@ -106,14 +106,6 @@ class SocialAccount(models.Model):
             models.Index(fields=['provider', 'external_user_id']),
             models.Index(fields=['owner']),
         ]
-        # 仅当 external_user_id 非空时才唯一，避免空值导致唯一索引冲突
-        constraints = [
-            models.UniqueConstraint(
-                fields=['provider', 'external_user_id'],
-                name='uniq_provider_external_user_id_not_null',
-                condition=~models.Q(external_user_id__isnull=True),
-            )
-        ]
         ordering = ['provider', 'external_username']
         verbose_name = '外部账号'
         verbose_name_plural = '外部账号'

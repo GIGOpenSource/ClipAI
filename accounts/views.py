@@ -224,15 +224,13 @@ class RegisterAPIView(APIView):
 class ChangePasswordAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(summary='修改当前登录用户密码并使旧 token 失效', tags=['认证'], request=ChangePasswordSerializer,
+    @extend_schema(summary='重置当前登录用户密码（不校验旧密码）并使旧 token 失效', tags=['认证'], request=SetPasswordSerializer,
                    responses={200: OpenApiResponse(description='修改成功，返回新 JWT')})
     def post(self, request):
-        serializer = ChangePasswordSerializer(data=request.data)
+        serializer = SetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = request.user
-        if not user.check_password(serializer.validated_data['old_password']):
-            return Response({'detail': '旧密码不正确'}, status=status.HTTP_400_BAD_REQUEST)
-        user.set_password(serializer.validated_data['new_password'])
+        user.set_password(serializer.validated_data['password'])
         user.save(update_fields=['password'])
         # Blacklist all existing tokens
         try:
