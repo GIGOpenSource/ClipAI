@@ -1,24 +1,28 @@
 services:
   nginx:
-    image: nginx:1.27-alpine
-    container_name: clipai_nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./frontend:/usr/share/nginx/html:ro
-      - ./staticfiles:/opt/staticfiles:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - web
-    networks:
-      - clipai_net
+   image: nginx:1.27-alpine
+   container_name: clipai_nginx
+   ports:
+     - "80:80"
+     - "443:443"
+   volumes:
+     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+     - ./home:/opt/home:ro
+     - ./dlw3g9omnw2135g5dm36mexovo123p.html:/opt/home/dlw3g9omnw2135g5dm36mexovo123p.html:ro
+     - ./staticfiles:/opt/staticfiles:ro
+     - ./nginx/certs:/etc/nginx/certs:ro
+     - /etc/letsencrypt:/etc/letsencrypt:ro
+   depends_on:
+     - web
+   networks:
+     - clipai_net
+
   web:
     build: .
     container_name: clipai_web
     command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    # ports:
+    #   - "8000:8000"
     expose:
       - "8000"
     volumes:
