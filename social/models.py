@@ -79,7 +79,7 @@ class SocialAccount(models.Model):
         ('unknown', 'Unknown'),
     ]
 
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='social_accounts', help_text='归属用户（租户）')
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='social_accounts', help_text='归属用户（租户）', null=True, blank=True)
     provider = models.CharField(max_length=32, choices=SocialConfig.PROVIDER_CHOICES, help_text='平台')
     config = models.ForeignKey(SocialConfig, on_delete=models.SET_NULL, null=True, blank=True, related_name='accounts', help_text='关联的应用配置（可选）')
 
@@ -106,7 +106,8 @@ class SocialAccount(models.Model):
             models.Index(fields=['provider', 'external_user_id']),
             models.Index(fields=['owner']),
         ]
-        unique_together = ('provider', 'external_user_id', 'owner')
+        # 放开 owner 维度的唯一约束，避免同账号跨租户/未指定 owner 时冲突
+        unique_together = ('provider', 'external_user_id')
         ordering = ['provider', 'external_username']
         verbose_name = '外部账号'
         verbose_name_plural = '外部账号'

@@ -201,7 +201,11 @@ def execute_task(task) -> Dict[str, Any]:
 
                 targets = _select_follow_targets(task, task.owner_id)
                 response['follow_candidates'] = [
-                    {'id': t.id, 'ext': t.external_user_id, 'username': t.username}
+                    {
+                        'id': t.id,
+                        'ext': (t.external_user_id or t.username or ''),
+                        'username': t.username
+                    }
                     for t in targets
                 ]
                 followed = []
@@ -254,9 +258,11 @@ def execute_task(task) -> Dict[str, Any]:
                                 FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='failed', error_code='oauth1_required')
                                 continue
 
-                            # 源用户ID
-                            me = cli.get_me()
-                            source_uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+                            # 源用户ID：优先用绑定账号表里的 external_user_id，避免额外调 /users/me
+                            source_uid = getattr(acc, 'external_user_id', None)
+                            if not source_uid:
+                                me = cli.get_me()
+                                source_uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
                             if not source_uid:
                                 FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='failed', error_code='source_user_missing')
                                 continue
@@ -269,6 +275,10 @@ def execute_task(task) -> Dict[str, Any]:
                                     if not target_uid:
                                         FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='failed', error_code='target_not_found')
                                         continue
+                                # 避免误对自己执行关注
+                                if str(target_uid) == str(source_uid):
+                                    FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='skipped', error_code='self_follow')
+                                    continue
                                 res = cli.follow_user(source_user_id=source_uid, target_user_id=target_uid)
                                 FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='success', response_dump=res)
                                 try:

@@ -5,7 +5,7 @@ from .models import SocialConfig, SocialAccount
 
 @admin.register(SocialConfig)
 class SocialConfigAdmin(admin.ModelAdmin):
-    list_display = ('name', 'provider', 'owner', 'enabled', 'is_default', 'priority', 'created_at')
+    list_display = ('id', 'name', 'provider', 'owner', 'enabled', 'is_default', 'priority', 'created_at')
     list_filter = ('provider', 'enabled', 'is_default')
     search_fields = ('name', 'owner__username')
 

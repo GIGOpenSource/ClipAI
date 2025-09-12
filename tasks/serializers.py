@@ -299,6 +299,17 @@ class FollowTargetSerializer(serializers.ModelSerializer):
         attrs['provider'] = provider
         if provider != 'twitter':
             raise serializers.ValidationError('关注目标目前仅支持 twitter')
+        # 兼容：运营把 @handle/用户名写进 external_user_id 字段
+        ext = (attrs.get('external_user_id') if 'external_user_id' in attrs else getattr(getattr(self, 'instance', None) or object(), 'external_user_id', '')) or ''
+        uname = (attrs.get('username') if 'username' in attrs else getattr(getattr(self, 'instance', None) or object(), 'username', '')) or ''
+        # 统一去除前缀 @
+        if isinstance(uname, str) and uname.startswith('@'):
+            attrs['username'] = uname.lstrip('@')
+        if isinstance(ext, str) and ext:
+            # 如果不是纯数字，则视作用户名写错了位置，转移到 username 并清空 external_user_id
+            if not str(ext).isdigit():
+                attrs['username'] = (attrs.get('username') or ext).lstrip('@')
+                attrs['external_user_id'] = ''
         return attrs
 
     def get_last_status(self, obj: FollowTarget):

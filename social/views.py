@@ -330,12 +330,15 @@ class SocialAccountViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        # 放开 owner 限制：允许前端显式传 owner；若未传则默认归属当前用户
         user = self.request.user
-        # 普通用户只能创建归属于自己的；管理员可指定 owner
-        if user and user.is_authenticated and not user.is_staff:
-            serializer.save(owner=user)
-        else:
-            serializer.save()
+        data = {}
+        try:
+            if user and user.is_authenticated and 'owner' not in getattr(serializer, 'initial_data', {}):
+                data['owner'] = user
+        except Exception:
+            pass
+        serializer.save(**data)
 
     @extend_schema(summary='社交账号下拉（按平台，可全量）', tags=['社交账户'])
     @action(detail=False, methods=['get'])
