@@ -90,73 +90,77 @@ def handle(task, social_cfg, account, text_to_post: str, response: Dict[str, Any
             except Exception:
                 pass
             raise
-    elif task.type == 'reply_message':
-        # reply to a tweet id in payload_template.tweet_id; if missing, try search by include_keywords
-        reply_to = (task.payload_template or {}).get('tweet_id')
+    elif task.type in {'reply_message', 'reply_comment'}:
+        # Ignore payload_template IDs. Fetch my latest tweet, find its recent comments (replies), and reply to the first unreplied one.
         text = (task.payload_template or {}).get('text', '')
-        if not reply_to:
+        if not has_oauth1:
+            response['error'] = 'oauth1_required'
+            return
+        tw_cli = TwitterClient(
+            consumer_key=consumer_key,
+            consumer_secret=consumer_secret,
+            access_token=account.get_access_token(),
+            access_token_secret=account.get_refresh_token(),
+        )
+        # Determine my user id
+        my_uid = getattr(account, 'external_user_id', None)
+        if not my_uid:
             try:
-                kw_cfg = None
-                if getattr(task, 'keyword_config_id', None):
-                    from keywords.models import KeywordConfig as _KC
-                    kw_cfg = _KC.objects.filter(id=task.keyword_config_id).first()
-                terms = (kw_cfg.include_keywords if kw_cfg else []) or []
-                if terms:
-                    # Build simple OR query. Prefix # if not present.
-                    qparts = []
-                    for t in terms[:5]:
-                        t = (t or '').strip()
-                        if not t:
-                            continue
-                        if t.startswith('#'):
-                            qparts.append(t)
-                        else:
-                            qparts.append(t)
-                    if qparts and has_oauth1:
-                        client = TwitterClient(
-                            consumer_key=consumer_key,
-                            consumer_secret=consumer_secret,
-                            access_token=account.get_access_token(),
-                            access_token_secret=account.get_refresh_token(),
-                        )
-                        if client:
-                            q = urllib.parse.quote(' OR '.join(qparts))
-                            path = f"/tweets/search/recent?query={q}&max_results=10"
-                            res = client._request('GET', path)
-                            data = (res or {}).get('data') or []
-                            if data:
-                                reply_to = data[0].get('id')
+                me_body = tw_cli.get_me()
+                my_uid = ((me_body or {}).get('data') or {}).get('id') or (me_body or {}).get('id')
+            except Exception:
+                my_uid = None
+        if not my_uid:
+            response['error'] = 'source_user_missing'
+            return
+        # Fetch my latest tweet
+        latest_id = None
+        try:
+            lst = tw_cli._request('GET', f"/users/{my_uid}/tweets?max_results=5")
+            items = (lst or {}).get('data') or []
+            if items:
+                latest_id = items[0].get('id')
+        except Exception:
+            latest_id = None
+        if not latest_id:
+            response['skipped'] = 'no_own_tweet'
+            return
+        # Find recent replies in the same conversation
+        reply_to = None
+        try:
+            res = tw_cli._request('GET', f"/tweets/search/recent?query=conversation_id:{latest_id}&max_results=10")
+            data = (res or {}).get('data') or []
+            for it in data:
+                cmt_id = (it or {}).get('id')
+                if not cmt_id or cmt_id == latest_id:
+                    continue
+                # skip if already replied in the last 7 days (best-effort)
+                if cache.get(f"replied:tw:{task.owner_id}:{cmt_id}"):
+                    continue
+                reply_to = cmt_id
+                break
+        except Exception:
+            reply_to = None
+        if not reply_to:
+            response['skipped'] = 'no_comments'
+            return
+        # Reply to the comment
+        try:
+            response['tweet_reply'] = tw_cli.reply_tweet(reply_to_tweet_id=reply_to, text=text)
+            try:
+                cache.set(f"replied:tw:{task.owner_id}:{reply_to}", 1, 7*24*3600)
             except Exception:
                 pass
-        if not reply_to:
-            # Fallback: reply to latest of my own posts
+        except Exception as _e:
             try:
-                post = SocialPost.objects.filter(owner=task.owner, provider='twitter').order_by('-posted_at').first()
-                if post and post.external_id:
-                    reply_to = post.external_id
+                resp_obj = getattr(_e, 'response', None)
+                if resp_obj is not None:
+                    _rl = TwitterClient()._extract_rate_limit(resp_obj)
+                    response['rate_limit_headers'] = _rl
+                    response['rate_limit_warning'] = bool(_rl.get('warning'))
+                    if response['rate_limit_warning']:
+                        response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
             except Exception:
                 pass
-        if reply_to:
-            try:
-                if not has_oauth1:
-                    raise Exception('OAuth1 credentials required for Twitter write operations')
-                tw_cli = TwitterClient(
-                    consumer_key=consumer_key,
-                    consumer_secret=consumer_secret,
-                    access_token=account.get_access_token(),
-                    access_token_secret=account.get_refresh_token(),
-                )
-                response['tweet_reply'] = tw_cli.reply_tweet(reply_to_tweet_id=reply_to, text=text)
-            except Exception as _e:
-                try:
-                    resp_obj = getattr(_e, 'response', None)
-                    if resp_obj is not None:
-                        _rl = TwitterClient()._extract_rate_limit(resp_obj)
-                        response['rate_limit_headers'] = _rl
-                        response['rate_limit_warning'] = bool(_rl.get('warning'))
-                        if response['rate_limit_warning']:
-                            response['rate_limit_note'] = 'Twitter API 剩余配额接近阈值，请关注调用频率'
-                except Exception:
-                    pass
-                raise
+            raise
 

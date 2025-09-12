@@ -263,6 +263,13 @@ def execute_task(task) -> Dict[str, Any]:
                             if not source_uid:
                                 me = cli.get_me()
                                 source_uid = ((me or {}).get('data') or {}).get('id') or (me or {}).get('id')
+                                # 持久化保存，避免后续重复调用 /users/me
+                                try:
+                                    if source_uid and acc and not getattr(acc, 'external_user_id', None):
+                                        acc.external_user_id = str(source_uid)
+                                        acc.save(update_fields=['external_user_id', 'updated_at'])
+                                except Exception:
+                                    pass
                             if not source_uid:
                                 FollowAction.objects.create(owner_id=task.owner_id, provider='twitter', social_account=acc, target=tgt, status='failed', error_code='source_user_missing')
                                 continue
