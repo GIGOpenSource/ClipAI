@@ -1,4 +1,6 @@
-from .celery import app as celery_app  # noqa: F401
+"""Project package initializer.
 
-__all__ = ('celery_app',)
+Celery is optional and not imported by default to avoid runtime dependency
+when running without worker/beat.
+"""
 

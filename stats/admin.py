@@ -3,7 +3,6 @@ from django.db.models import Avg, Count, Q
 from django.utils.html import format_html
 from django.utils import timezone
 from datetime import datetime
-from tasks.models import TaskRun
 from .models import StatsBoard, DailyStat
 from .utils import rebuild_daily_stats
 

@@ -1,110 +1,95 @@
 from django.contrib import admin
 from django import forms
-from .models import ScheduledTask, TaskRun, SocialPost, Tag, FollowTarget, FollowAction
-from social.models import SocialConfig
-from ai.models import AIConfig
-from keywords.models import KeywordConfig
-from prompts.models import PromptConfig
+from .models import SimpleTask, SimpleTaskRun
 
 
-class ScheduledTaskAdminForm(forms.ModelForm):
-    social_config = forms.ModelChoiceField(
-        queryset=SocialConfig.objects.all().order_by('provider', 'name'),
-        required=False,
-        label='社交配置'
-    )
-    ai_config = forms.ModelChoiceField(
-        queryset=AIConfig.objects.all().order_by('-is_default', '-priority', 'name'),
-        required=False,
-        label='AI 配置'
-    )
-    keyword_config = forms.ModelChoiceField(
-        queryset=KeywordConfig.objects.all().order_by('provider', 'name'),
-        required=False,
-        label='关键词配置'
-    )
-    prompt_config = forms.ModelChoiceField(
-        queryset=PromptConfig.objects.all().order_by('scene', 'name'),
-        required=False,
-        label='提示词配置'
-    )
+class SimpleTaskAdminForm(forms.ModelForm):
+    # 人性化输入：用逗号分隔字符串填充 JSON 字段
+    tags_text = forms.CharField(required=False, help_text='逗号分隔，如: ai,python,news')
+    mentions_text = forms.CharField(required=False, help_text='逗号分隔，不带@，如: user1,user2')
+
+    # 人性化输入：映射到 payload
+    twitter_reply_to_tweet_id = forms.CharField(required=False, help_text='Twitter 回复的推文 ID')
+    facebook_page_id = forms.CharField(required=False, help_text='Facebook 发帖 Page ID')
+    facebook_comment_id = forms.CharField(required=False, help_text='Facebook 回复的评论 ID')
 
     class Meta:
-        model = ScheduledTask
-        # 用可选下拉替代 *_id 字段，避免手输 ID
-        exclude = ('social_config_id', 'ai_config_id', 'keyword_config_id', 'prompt_config_id')
+        model = SimpleTask
+        fields = '__all__'
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        inst = self.instance
-        if inst and inst.pk:
-            if inst.social_config_id:
-                self.fields['social_config'].initial = SocialConfig.objects.filter(id=inst.social_config_id).first()
-            if inst.ai_config_id:
-                self.fields['ai_config'].initial = AIConfig.objects.filter(id=inst.ai_config_id).first()
-            if inst.keyword_config_id:
-                self.fields['keyword_config'].initial = KeywordConfig.objects.filter(id=inst.keyword_config_id).first()
-            if inst.prompt_config_id:
-                self.fields['prompt_config'].initial = PromptConfig.objects.filter(id=inst.prompt_config_id).first()
+        inst = self.instance if getattr(self, 'instance', None) and self.instance.pk else None
+        # 反显 tags/mentions
+        self.fields['tags_text'].initial = ','.join((inst.tags or [])) if inst else ''
+        self.fields['mentions_text'].initial = ','.join((inst.mentions or [])) if inst else ''
+        # 反显 payload 的常用字段
+        payload = (inst.payload or {}) if inst else {}
+        self.fields['twitter_reply_to_tweet_id'].initial = payload.get('comment_id', '') if inst and inst.provider == 'twitter' and inst.type == 'reply_comment' else ''
+        self.fields['facebook_page_id'].initial = payload.get('page_id', '') if inst and inst.provider == 'facebook' and inst.type == 'post' else ''
+        self.fields['facebook_comment_id'].initial = payload.get('comment_id', '') if inst and inst.provider == 'facebook' and inst.type == 'reply_comment' else ''
 
-    def save(self, commit=True):
-        inst: ScheduledTask = super().save(commit=False)
-        sc = self.cleaned_data.get('social_config')
-        ai = self.cleaned_data.get('ai_config')
-        kw = self.cleaned_data.get('keyword_config')
-        pr = self.cleaned_data.get('prompt_config')
-        inst.social_config_id = sc.pk if sc else None
-        inst.ai_config_id = ai.pk if ai else None
-        inst.keyword_config_id = kw.pk if kw else None
-        inst.prompt_config_id = pr.pk if pr else None
-        if commit:
-            inst.save()
-            self.save_m2m()
-        return inst
+    def clean(self):
+        cleaned = super().clean()
+        provider = (cleaned.get('provider') or '').lower()
+        ttype = cleaned.get('type') or ''
+        # 解析 tags/mentions
+        tags_text = (cleaned.pop('tags_text', '') or '').strip()
+        mentions_text = (cleaned.pop('mentions_text', '') or '').strip()
+        cleaned['tags'] = [s.strip().lstrip('#') for s in tags_text.split(',') if s.strip()][:5]
+        cleaned['mentions'] = [s.strip().lstrip('@') for s in mentions_text.split(',') if s.strip()]
+        # 处理 payload
+        payload = dict(cleaned.get('payload') or {})
+        if provider == 'twitter' and ttype == 'reply_comment':
+            twid = (cleaned.pop('twitter_reply_to_tweet_id', '') or '').strip()
+            if not twid:
+                raise forms.ValidationError('Twitter 回复需填写“Twitter 回复的推文 ID”')
+            payload['comment_id'] = twid
+        elif provider == 'facebook' and ttype == 'post':
+            pid = (cleaned.pop('facebook_page_id', '') or '').strip()
+            if not pid:
+                raise forms.ValidationError('Facebook 发帖需填写“Facebook 发帖 Page ID”')
+            payload['page_id'] = pid
+        elif provider == 'facebook' and ttype == 'reply_comment':
+            cid = (cleaned.pop('facebook_comment_id', '') or '').strip()
+            if not cid:
+                raise forms.ValidationError('Facebook 回复需填写“Facebook 回复的评论 ID”')
+            payload['comment_id'] = cid
+        cleaned['payload'] = payload
+        return cleaned
 
 
-@admin.register(ScheduledTask)
-class ScheduledTaskAdmin(admin.ModelAdmin):
-    form = ScheduledTaskAdminForm
-    list_display = ('id','owner', 'type', 'provider', 'enabled', 'recurrence_type', 'interval_value', 'time_of_day', 'next_run_at', 'last_run_at', 'status')
-    list_filter = ('provider', 'type', 'enabled', 'recurrence_type')
+@admin.register(SimpleTask)
+class SimpleTaskAdmin(admin.ModelAdmin):
+    form = SimpleTaskAdminForm
+    list_display = ('id', 'owner', 'type', 'provider', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'created_at', 'updated_at')
+    list_filter = ('provider', 'type')
     search_fields = ('owner__username',)
-    filter_horizontal = ('tags',)
+    fieldsets = (
+        (None, {
+            'fields': (
+                'owner', 'provider', 'type', 'language', 'prompt', 'text',
+                'tags_text', 'mentions_text',
+                'selected_accounts',
+            )
+        }),
+        ('平台参数（按需填写）', {
+            'fields': (
+                'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id',
+            )
+        }),
+        ('调试', {
+            'classes': ('collapse',),
+            'fields': ('payload', 'last_text',),
+        }),
+    )
 
 
-@admin.register(TaskRun)
-class TaskRunAdmin(admin.ModelAdmin):
-    list_display = ('id','scheduled_task', 'success', 'provider', 'task_type', 'duration_ms', 'started_at', 'finished_at')
-    list_filter = ('provider', 'task_type', 'success', 'sla_met')
-    search_fields = ('scheduled_task__id',)
-
-# Register your models here.
-
-
-@admin.register(SocialPost)
-class SocialPostAdmin(admin.ModelAdmin):
-    list_display = ('id','provider','external_id','owner','posted_at','scheduled_task','task_run')
-    list_filter = ('provider',)
-    search_fields = ('external_id','owner__username')
-
-
-@admin.register(Tag)
-class TagAdmin(admin.ModelAdmin):
-    list_display = ('id','name','created_at')
-    search_fields = ('name',)
-
-
-@admin.register(FollowTarget)
-class FollowTargetAdmin(admin.ModelAdmin):
-    list_display = ('id','owner','provider','username','external_user_id','enabled','source','updated_at')
-    list_filter = ('provider','enabled','source')
-    search_fields = ('username','external_user_id','owner__username')
-
-
-@admin.register(FollowAction)
-class FollowActionAdmin(admin.ModelAdmin):
-    list_display = ('id','owner','provider','social_account','target','status','error_code','executed_at')
-    list_filter = ('provider','status')
-    search_fields = ('target__username','social_account__external_username','owner__username')
+@admin.register(SimpleTaskRun)
+class SimpleTaskRunAdmin(admin.ModelAdmin):
+    list_display = ('id', 'task', 'owner', 'provider', 'type', 'success', 'external_id', 'created_at')
+    list_filter = ('provider', 'type', 'success')
+    search_fields = ('task__id', 'owner__username', 'external_id', 'error_code')
+    readonly_fields = ('created_at',)
 
 

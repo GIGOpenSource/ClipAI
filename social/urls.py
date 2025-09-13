@@ -1,33 +1,23 @@
 from django.urls import path, include
-from django.conf import settings
-from .views import WebhookReceiver, SocialAccountHealthView, TwitterOAuthStart, TwitterOAuthCallback, FacebookOAuthStart, FacebookOAuthCallback, InstagramOAuthStart, InstagramOAuthCallback, ThreadsOAuthStart, ThreadsOAuthCallback
 from rest_framework.routers import DefaultRouter
-from .views import SocialConfigViewSet, SocialAccountViewSet
+from .views import (
+    PoolAccountViewSet,
+    PoolAccountTwitterOAuthStart, PoolAccountTwitterOAuthCallback,
+    PoolAccountFacebookOAuthStart, PoolAccountFacebookOAuthCallback,
+)
 
 router = DefaultRouter()
-router.register(r'configs', SocialConfigViewSet)
-router.register(r'accounts', SocialAccountViewSet)
+router.register(r'pool-accounts', PoolAccountViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('accounts/health-check/', SocialAccountHealthView.as_view(), name='social-accounts-health-check'),
-    path('oauth/twitter/start/', TwitterOAuthStart.as_view(), name='twitter-oauth-start'),
-    path('oauth/twitter/callback/', TwitterOAuthCallback.as_view(), name='twitter-oauth-callback'),
-    path('oauth/twitter/callback/<int:user_id>/', TwitterOAuthCallback.as_view(), name='twitter-oauth-callback-user'),
-    path('oauth/facebook/start/', FacebookOAuthStart.as_view(), name='facebook-oauth-start'),
-    path('oauth/facebook/callback/', FacebookOAuthCallback.as_view(), name='facebook-oauth-callback'),
-    path('oauth/facebook/callback/<int:user_id>/', FacebookOAuthCallback.as_view(), name='facebook-oauth-callback-user'),
-    path('oauth/instagram/start/', InstagramOAuthStart.as_view(), name='instagram-oauth-start'),
-    path('oauth/instagram/callback/', InstagramOAuthCallback.as_view(), name='instagram-oauth-callback'),
-    path('oauth/instagram/callback/<int:user_id>/', InstagramOAuthCallback.as_view(), name='instagram-oauth-callback-user'),
-    path('oauth/threads/start/', ThreadsOAuthStart.as_view(), name='threads-oauth-start'),
-    path('oauth/threads/callback/', ThreadsOAuthCallback.as_view(), name='threads-oauth-callback'),
-    path('oauth/threads/callback/<int:user_id>/', ThreadsOAuthCallback.as_view(), name='threads-oauth-callback-user'),
+    # OAuth for PoolAccount (account pool)
+    path('oauth/pool/twitter/start/', PoolAccountTwitterOAuthStart.as_view(), name='pool-twitter-oauth-start'),
+    path('oauth/pool/twitter/callback/', PoolAccountTwitterOAuthCallback.as_view(), name='pool-twitter-oauth-callback'),
+    path('oauth/pool/facebook/start/', PoolAccountFacebookOAuthStart.as_view(), name='pool-facebook-oauth-start'),
+    path('oauth/pool/facebook/callback/', PoolAccountFacebookOAuthCallback.as_view(), name='pool-facebook-oauth-callback'),
 ]
 
-if getattr(settings, 'WEBHOOKS_ENABLED', False):
-    urlpatterns += [
-        path('webhooks/<str:provider>/', WebhookReceiver.as_view(), name='webhook-receiver'),
-    ]
+urlpatterns += []
 
 

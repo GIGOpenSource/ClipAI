@@ -24,7 +24,7 @@ urlpatterns = [
     path('api/accounts/', include('accounts.urls')),
     path('api/ai/', include('ai.urls')),
     path('api/social/', include('social.urls')),
-    path('api/keywords/', include('keywords.urls')),
+    # path('api/keywords/', include('keywords.urls')),
     path('api/prompts/', include('prompts.urls')),
     path('api/tasks/', include('tasks.urls')),
     path('api/stats/', include('stats.urls')),

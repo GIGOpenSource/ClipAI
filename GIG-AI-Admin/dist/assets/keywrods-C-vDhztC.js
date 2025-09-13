@@ -1,1 +1,0 @@
-import{g as o,a as e,p as r,d as t}from"./http-VbNDWnN5.js";const d=s=>o("/keywords/configs/",{params:s}),g=s=>o(`/keywords/configs/${s}/`),c=s=>e("/keywords/configs/admin_create/",s),i=(s,n)=>r(`/keywords/configs/${s}/`,n),f=s=>t(`/keywords/configs/${s}/`),w=s=>e("/keywords/configs/",s);export{g as a,c as b,w as c,f as d,d as g,i as u};

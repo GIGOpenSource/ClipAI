@@ -1,1 +1,0 @@
-const l=[{value:"twitter",label:"X"},{value:"facebook",label:"Facebook"},{value:"instagram",label:"Instagram"},{value:"threads",label:"Threads"}],a=[{value:"reply_comment",label:"回复评论"},{value:"reply_message",label:"回复消息"},{value:"post",label:"发帖"},{value:"follow",label:"关注"}];export{l as P,a as T};

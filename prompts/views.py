@@ -43,6 +43,7 @@ class PromptConfigViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        # 强制把当前用户作为 owner，避免前端传 owner
         if self.request.user and self.request.user.is_authenticated:
             serializer.save(owner=self.request.user)
         else:

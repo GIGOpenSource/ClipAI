@@ -4,9 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
-from social.models import SocialAccount
 from .models import AIConfig
-from .serializers import AIConfigSerializer, AIConfigPickerSerializer
+from .serializers import AIConfigSerializer
 
 
 @extend_schema_view(
@@ -59,26 +58,10 @@ class AIConfigViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def test_connection(self, request, pk=None):
         config = self.get_object()
-        # 简化：不真正请求厂商 API，仅检查关键字段
         if config.provider == 'azure_openai' and (not config.base_url or not config.api_version):
             return Response({'detail': 'Azure OpenAI 需要 base_url 和 api_version'}, status=400)
         if not config.api_key:
             return Response({'detail': '缺少 api_key'}, status=400)
         return Response({'status': 'ok'})
-
-    @extend_schema(summary='AI 账号下拉（仅 id 与 bot 文案）', tags=['AI配置'])
-    @action(detail=False, methods=['get'])
-    def picker(self, request):
-        # 下拉不做多租户限制；
-        # - 无 provider 参数：默认返回“推特平台”相关（按名称包含 twitter），不区分启用状态
-        # - 有 provider 参数：按名称包含 provider 且仅返回启用的
-        provider = (request.query_params.get('provider') or '').strip().lower()
-        if provider:
-            qs = SocialAccount.objects.filter(enabled=True, provider=provider)
-        else:
-            qs = SocialAccount.objects.filter(provider='twitter')
-        print(qs, SocialAccount.objects.all())
-        data = AIConfigPickerSerializer(qs, many=True).data
-        return Response(data)
 
 # Create your views here.

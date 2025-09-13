@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 
 
 class PromptConfigSerializer(serializers.ModelSerializer):
+    owner = serializers.HiddenField(default=serializers.CurrentUserDefault())
     class OwnerBriefSerializer(serializers.ModelSerializer):
         class Meta:
             model = get_user_model()

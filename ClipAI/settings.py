@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'ai',
     'social',
-    'keywords',
     'prompts',
     'tasks',
     'stats',
@@ -76,30 +75,7 @@ SIMPLE_JWT = {
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'ClipAI 账户管理 API',
-    'DESCRIPTION': (
-        '后端接口文档（中文）\n\n'
-        '校验规则摘要：\n'
-        '- 任务调度：\n'
-        '  - minutely/hourly: 需 interval_value>0\n'
-        '  - daily/weekly/monthly: 需 time_of_day\n'
-        '  - weekly: weekday_mask ⊆ {mon..sun} 且非空\n'
-        '  - monthly: day_of_month ∈ [-31,-1]∪[1,31]\n'
-        '  - cron: cron_expr 为 5~6 段\n'
-        '- 社交配置：twitter 需 client_id/client_secret；facebook/instagram 需 app_id/app_secret\n'
-        '- AI 配置：openai/deepseek 需 api_key 与 model；deepseek 未填 base_url 默认 https://api.deepseek.com\n'
-        '- 提示词：enabled=true 时 content 必填；variables 必须为字符串数组\n'
-        '- 关键词：match_mode ∈ {any,all,regex}；包含/排除关键词必须为字符串数组\n'
-        '\n权限与多租户：\n'
-        '- 所有接口默认仅管理员可访问；对象级权限采用 IsOwnerOrAdmin（管理员或对象 owner）\n'
-        '- 列表接口默认过滤到当前用户 owner；管理员可传 owner_id 或在统计中使用 aggregate=all\n'
-        '\n速率限制（Rate Limit）：\n'
-        '- 系统内置本地限速保护，命中后任务将被跳过并应用退避（默认 300 秒）。\n'
-        '- 当调用 Twitter 等平台 API 时，会尝试解析平台限速响应头：x-rate-limit-limit/x-rate-limit-remaining/x-rate-limit-reset。\n'
-        '- 在任务运行结果 TaskRun.response_dump 中新增：\n'
-        '  - rate_limit_headers：平台返回的限速头部（字典）。\n'
-        '  - rate_limit_warning：是否接近阈值（示例：remaining<=3）。\n'
-        '  - rate_limit_note：限速提示说明。\n'
-    ),
+    'DESCRIPTION': '简化版后端接口文档（中文）',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
@@ -208,63 +184,25 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
-# Celery (defaults; override via env)
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://redis:6379/1'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_BEAT_SCHEDULE = {
-    'check-scheduled-tasks-every-60s': {
-        'task': 'tasks.tasks.check_scheduled_tasks',
-        'schedule': 60.0,
-    },
-    'refresh-expiring-tokens-every-5m': {
-        'task': 'social.tasks.refresh_expiring_tokens',
-        'schedule': 300.0,
-        'args': (15,)
-    },
-    'check-social-accounts-health-every-1h': {
-        'task': 'social.tasks.check_social_accounts_health',
-        'schedule': 3600.0,
-    },
-}
+# Celery 已移除（保留空占位，避免旧代码误用）
+CELERY_BROKER_URL = None
+CELERY_RESULT_BACKEND = None
+CELERY_BEAT_SCHEDULE = {}
 
 # Encryption key for sensitive fields (set in env for production)
 ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
 
-# Toggle webhooks (default off)
-WEBHOOKS_ENABLED = (os.getenv('WEBHOOKS_ENABLED', 'false').lower() == 'true')
+# 关闭未用的旧开关
+WEBHOOKS_ENABLED = False
+AI_FAKE_FALLBACK_ENABLED = False
+RATE_LIMIT_ENFORCE_SKIP = False
+RATE_LIMIT_DEFAULT_BACKOFF_SECONDS = 300
+FEATURE_THREADS = False
 
-# 当无平台账号但已配置 AI 时，是否启用“AI+Faker 回退”
-AI_FAKE_FALLBACK_ENABLED = (os.getenv('AI_FAKE_FALLBACK_ENABLED', 'false').lower() == 'false')
-
-# Rate limit enforcement (no DB changes)
-RATE_LIMIT_ENFORCE_SKIP = (os.getenv('RATE_LIMIT_ENFORCE_SKIP', 'true').lower() == 'true')
-RATE_LIMIT_DEFAULT_BACKOFF_SECONDS = int(os.getenv('RATE_LIMIT_DEFAULT_BACKOFF_SECONDS', '300'))
-FEATURE_THREADS = (os.getenv('FEATURE_THREADS', 'false').lower() == 'true')
-
-# Django cache: prefer Redis for cross-process rate-limit blocks; fallback to local memory
-REDIS_CACHE_URL = os.getenv('REDIS_CACHE_URL') or os.getenv('CACHE_URL')
-if not REDIS_CACHE_URL:
-    try:
-        if (CELERY_BROKER_URL or '').startswith('redis://'):
-            # Use DB 2 for cache by default when broker is redis
-            REDIS_CACHE_URL = (CELERY_BROKER_URL.rsplit('/', 1)[0] + '/2') if '/' in CELERY_BROKER_URL else None
-    except Exception:
-        REDIS_CACHE_URL = None
-
-if REDIS_CACHE_URL:
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-            'LOCATION': REDIS_CACHE_URL,
-        }
+# 简化缓存为本地内存
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'clipai-local-cache',
     }
-else:
-    CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'clipai-local-cache',
-        }
-    }
+}

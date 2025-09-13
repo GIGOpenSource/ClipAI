@@ -1,1 +1,0 @@
-import{g as a,p as i,a as o,d as c}from"./http-VbNDWnN5.js";const e=s=>a("/ai/configs/",{params:s}),g=s=>o("/ai/configs/",s),d=s=>a(`/ai/configs/${s}`),l=(s,t)=>i(`/ai/configs/${s}/`,t),p=s=>c(`/ai/configs/${s}/`);export{g as a,p as b,d,e as g,l as u};
