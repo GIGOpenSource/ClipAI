@@ -14,7 +14,7 @@ class PoolAccountSerializer(serializers.ModelSerializer):
         model = PoolAccount
         fields = [
             'id', 'provider', 'name', 'api_key', 'api_secret',
-            'access_token', 'access_token_secret', 'is_ban', 'status',
+            'access_token', 'access_token_secret', 'is_ban', 'status', 'usage_policy',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -37,6 +37,7 @@ class PoolAccountSerializer(serializers.ModelSerializer):
             api_secret=validated_data.get('api_secret', ''),
             is_ban=validated_data.get('is_ban', False),
             status=validated_data.get('status', 'active'),
+            usage_policy=validated_data.get('usage_policy', 'unlimited'),
         )
         if 'access_token' in validated_data:
             acc.set_access_token(validated_data.get('access_token'))
@@ -46,7 +47,7 @@ class PoolAccountSerializer(serializers.ModelSerializer):
         return acc
 
     def update(self, instance, validated_data):
-        for f in ['provider', 'name', 'api_key', 'api_secret', 'is_ban', 'status']:
+        for f in ['provider', 'name', 'api_key', 'api_secret', 'is_ban', 'status', 'usage_policy']:
             if f in validated_data:
                 setattr(instance, f, validated_data.get(f))
         if 'access_token' in validated_data:

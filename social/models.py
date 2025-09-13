@@ -22,6 +22,11 @@ class PoolAccount(models.Model):
     access_token_secret = models.TextField(blank=True)
     is_ban = models.BooleanField(default=False)
     status = models.CharField(max_length=32, default='active', help_text='active/inactive')
+    USAGE_POLICY_CHOICES = [
+        ('limited', 'Limited (2 per day)'),
+        ('unlimited', 'Unlimited'),
+    ]
+    usage_policy = models.CharField(max_length=16, choices=USAGE_POLICY_CHOICES, default='unlimited', help_text='limited: 每天最多 2 次；unlimited: 不限次')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

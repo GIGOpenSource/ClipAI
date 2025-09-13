@@ -150,6 +150,16 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         ok_count = 0
         err_count = 0
         for acc in selected_qs:
+            # 每日使用上限：limited 账号每天最多使用 2 次（无论成功与否）
+            try:
+                if getattr(acc, 'usage_policy', 'unlimited') == 'limited':
+                    today = timezone.now().date()
+                    used_today = SimpleTaskRun.objects.filter(account=acc, created_at__date=today).count()
+                    if used_today >= 2:
+                        results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'daily_limit_reached', 'used_today': used_today})
+                        continue
+            except Exception:
+                pass
             try:
                 if task.provider == 'twitter':
                     # 官方库 Tweepy，使用 OAuth1.0a
