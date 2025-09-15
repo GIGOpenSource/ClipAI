@@ -1,0 +1,4 @@
+provider,name,is_default,api_version,redirect_uris,scopes,client_id,client_secret,app_id,app_secret,bearer_token,webhook_verify_token,signing_secret,account_external_user_id,account_external_username,account_access_token,account_refresh_token,account_expires_at,account_scopes,account_status
+twitter,My X Dev,TRUE,2,https://your.app/social/oauth/twitter/callback,tweet.read users.read,TW_API_KEY,TW_API_SECRET,,,,,,945921982977019904,,oauth1_user_token,oauth1_user_token_secret,2026-01-01T00:00:00,tweet.read users.read,active
+facebook,My FB App,TRUE,v19.0,https://your.app/social/oauth/facebook/callback,public_profile,,,FB_APP_ID,FB_APP_SECRET,,,,123456789,MyFBUser,fb_user_access_token,,2026-01-01T00:00:00,public_profile,active
+instagram,My IG App,FALSE,,https://your.app/social/oauth/instagram/callback,user_profile,,,IG_APP_ID,IG_APP_SECRET,,,,,ig_user_access_token,,2026-01-01T00:00:00,user_profile,active,

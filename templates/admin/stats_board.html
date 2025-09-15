@@ -1,0 +1,29 @@
+{% extends "admin/change_list.html" %}
+{% block content %}
+  <div class="module">
+    {{ stats_html|safe }}
+  </div>
+  <div class="module">
+    <h3>最近 TaskRun（50 条）</h3>
+    <table class="adminstats">
+      <tr>
+        <th>ID</th><th>任务ID</th><th>平台</th><th>类型</th><th>成功</th><th>耗时(ms)</th><th>开始</th><th>结束</th>
+      </tr>
+      {% for r in recent_runs %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td>{{ r.scheduled_task_id }}</td>
+        <td>{{ r.provider }}</td>
+        <td>{{ r.task_type }}</td>
+        <td>{{ r.success }}</td>
+        <td>{{ r.duration_ms }}</td>
+        <td>{{ r.started_at }}</td>
+        <td>{{ r.finished_at }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {{ block.super }}
+{% endblock %}
+
+
