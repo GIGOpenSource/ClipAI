@@ -24,12 +24,17 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_queryset(self):
+        print("查询querysimple")
         qs = super().get_queryset()
+        qs = qs.select_related('prompt', 'owner').prefetch_related('selected_accounts')
+
         if not (self.request.user and self.request.user.is_authenticated and self.request.user.is_staff):
             qs = qs.filter(owner=self.request.user)
         provider = self.request.query_params.get('provider')
         if provider:
             qs = qs.filter(provider=provider)
+        for i, task in enumerate(qs):
+            print(f"Task {i + 1}: {task.__dict__}")
         return qs
 
     @extend_schema(
@@ -40,6 +45,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
+        print("立即执行")
         task = self.get_object()
         from ai.models import AIConfig
         from ai.client import OpenAICompatibleClient
@@ -139,8 +145,16 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             text = (text + mstr).strip()
         # 平台执行
         results = []
-        selected_qs = task.selected_accounts.all()
-        selected_ids = list(selected_qs.values_list('id', flat=True))
+        try:
+            selected_qs = task.selected_accounts.all()
+            print(selected_qs)
+            selected_ids = list(selected_qs.values_list('id', flat=True))
+        except Exception as e:
+            return Response({
+                'detail': '获取选中账户时出错',
+                'error': str(e),
+                'selected_account_ids': list(task.selected_accounts.values_list('id', flat=True))
+            }, status=400)
         # 运行前：将所选账号设为激活
         if selected_ids:
             try:
@@ -363,6 +377,7 @@ class TaskTagsView(APIView):
         """
         为指定任务添加标签
         """
+        print("为指定任务添加标签")
         try:
             task = SimpleTask.objects.get(id=task_id)
             # 检查权限

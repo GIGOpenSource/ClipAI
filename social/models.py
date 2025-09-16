@@ -13,9 +13,8 @@ class PoolAccount(models.Model):
         ('twitter', 'Twitter'),
         ('facebook', 'Facebook'),
     ]
-
-    provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)
-    name = models.CharField(max_length=200)
+    provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)    # 提供商Twitter 或 Facebook
+    name = models.CharField(max_length=200)                                 # 账户名称
     api_key = models.CharField(max_length=255, blank=True)
     api_secret = models.CharField(max_length=255, blank=True)
     access_token = models.TextField(blank=True)
