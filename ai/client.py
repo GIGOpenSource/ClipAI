@@ -23,7 +23,9 @@ class OpenAICompatibleClient:
         max_tokens: Optional[int] = None,
         extra_headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        url = f"{self.base_url}/v1/chat/completions"
+        # url = f"{self.base_url}/v1/chat/completions"
+        url = f"{self.base_url}/chat/completions"
+        # url = f"{self.base_url}"
         headers = {
             'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json',

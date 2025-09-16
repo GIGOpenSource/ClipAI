@@ -1,3 +1,4 @@
+from openai import OpenAI
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -95,6 +96,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         lang_name = lang_map.get(lang_code, 'Auto')
         for cfg in ai_qs:
             try:
+                # cli = OpenAI(base_url=cfg.base_url or 'https://api.openai.com', api_key=cfg.api_key)
                 cli = OpenAICompatibleClient(base_url=cfg.base_url or 'https://api.openai.com', api_key=cfg.api_key)
                 # Build system and user prompts per language
                 if lang_code == 'en':
@@ -134,6 +136,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     break
             except Exception as e:
                 last_err = str(e)
+                print("模型访问失败：",last_err)
         if not text:
             return Response({'detail': 'AI 生成失败（AI 为必需）', 'error': last_err or 'no text generated'}, status=400)
         # 附加 tags/mentions（mentions 前缀 @）
@@ -189,11 +192,15 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                         access_token_secret=ats
                     )
                     if task.type == 'post':
+                        print(f"正在发送推文: {text}")
                         resp = client.create_tweet(text=text)
+                        print("推文发送成功!")
+                        print(f"响应: {resp}")
                         tweet_id = None
                         try:
                             data = getattr(resp, 'data', None) or {}
                             tweet_id = data.get('id') if isinstance(data, dict) else getattr(data, 'id', None)
+                            print(f"Tweet ID: {tweet_id}")
                         except Exception:
                             tweet_id = None
                         results.append({'account_id': acc.id, 'status': 'ok', 'tweet_id': tweet_id, 'account_status': acc.status})
@@ -206,6 +213,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                                 ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
                                 success=True, external_id=str(tweet_id or ''), error_code='', error_message='',
                             )
+
                         except Exception:
                             pass
                         try:
