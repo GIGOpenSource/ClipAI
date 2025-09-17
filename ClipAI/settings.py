@@ -116,18 +116,9 @@ WSGI_APPLICATION = 'ClipAI.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# POSTGRES_HOST = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST')
-POSTGRES_HOST = "127.0.0.1"
+POSTGRES_HOST = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or "127.0.0.1"
 if POSTGRES_HOST:
     DATABASES = {
-        # 'default': {
-        #     'ENGINE': 'django.db.backends.postgresql',
-        #     'NAME': os.getenv('POSTGRES_DB', 'clipai'),
-        #     'USER': os.getenv('POSTGRES_USER', 'clipai'),
-        #     'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'clipai'),
-        #     'HOST': POSTGRES_HOST,
-        #     'PORT': os.getenv('POSTGRES_PORT', '5432'),
-        # }
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('POSTGRES_DB', 'clipai'),
