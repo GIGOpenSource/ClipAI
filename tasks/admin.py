@@ -9,7 +9,7 @@ class SimpleTaskAdminForm(forms.ModelForm):
     mentions_text = forms.CharField(required=False, help_text='逗号分隔，不带@，如: user1,user2')
 
     # 人性化输入：映射到 payload
-    twitter_reply_to_tweet_id = forms.CharField(required=False,help_text='Twitter 回复的推文 ID')
+    twitter_reply_to_tweet_id = forms.CharField(required=False, help_text='Twitter 回复的推文 ID')
     facebook_page_id = forms.CharField(required=False, help_text='Facebook 发帖 Page ID')
     facebook_comment_id = forms.CharField(required=False, help_text='Facebook 回复的评论 ID')
 

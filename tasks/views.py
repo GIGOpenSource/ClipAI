@@ -1,4 +1,3 @@
-from openai import OpenAI
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -144,8 +143,21 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             tail = ' ' + ' '.join('#' + t.lstrip('#') for t in task.tags[:5])
             text = (text + tail).strip()
         if task.mentions:
-            mstr = ' ' + ' '.join('@' + str(m).lstrip('@') for m in task.mentions[:10])
-            text = (text + mstr).strip()
+            # mstr = ' ' + ' '.join('@' + str(m).lstrip('@') for m in task.mentions[:10])
+            # text = (text + mstr).strip()
+            # 处理 mentions：支持字符串和列表格式
+            mention_list = []
+            if isinstance(task.mentions, str):
+                # 字符串格式：'user1,user2,user3'
+                mention_list = [m.strip() for m in task.mentions.split(',') if m.strip()]
+            elif isinstance(task.mentions, list):
+                # 列表格式：['user1', 'user2', 'user3']
+                mention_list = [str(m).strip() for m in task.mentions if str(m).strip()]
+            # 添加 @ 符号前缀并限制数量
+            if mention_list:
+                mstr = ' ' + ' '.join('@' + m.lstrip('@') for m in mention_list[:10])
+                text = (text + mstr).strip()
+
         # 平台执行
         results = []
         try:
