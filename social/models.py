@@ -1,6 +1,6 @@
 from django.db import models
 from .utils import encrypt_text, decrypt_text
-
+from django.contrib.auth.models import User
 class PoolAccount(models.Model):
     """账号池模型（全局/共享），用于执行任务时选择多个账号并行执行。
 
@@ -28,6 +28,7 @@ class PoolAccount(models.Model):
     usage_policy = models.CharField(max_length=16, choices=USAGE_POLICY_CHOICES, default='unlimited', help_text='limited: 每天最多 2 次；unlimited: 不限次')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='pool_accounts')
 
     class Meta:
         ordering = ['provider', 'name']

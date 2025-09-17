@@ -2,8 +2,15 @@ from rest_framework.permissions import BasePermission
 
 
 class IsStaffUser(BasePermission):
+    """
+       允许 is_staff=True 或 is_active=True 的用户访问
+       """
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.is_staff)
+        if not request.user or not request.user.is_authenticated:
+            return False
+            # 允许 staff 用户或 active 用户访问
+        return request.user.is_staff or request.user.is_active
+        # return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
 class IsOwnerOrAdmin(BasePermission):

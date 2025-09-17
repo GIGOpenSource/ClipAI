@@ -24,7 +24,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get_queryset(self):
-        print("查询querysimple")
         qs = super().get_queryset()
         qs = qs.select_related('prompt', 'owner').prefetch_related('selected_accounts')
 
@@ -33,8 +32,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         provider = self.request.query_params.get('provider')
         if provider:
             qs = qs.filter(provider=provider)
-        for i, task in enumerate(qs):
-            print(f"Task {i + 1}: {task.__dict__}")
         return qs
 
     @extend_schema(
@@ -45,7 +42,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     )
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
-        print("立即执行")
         task = self.get_object()
         from ai.models import AIConfig
         from ai.client import OpenAICompatibleClient
@@ -162,7 +158,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         results = []
         try:
             selected_qs = task.selected_accounts.all()
-            print(selected_qs)
             selected_ids = list(selected_qs.values_list('id', flat=True))
         except Exception as e:
             return Response({
@@ -204,15 +199,12 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                         access_token_secret=ats
                     )
                     if task.type == 'post':
-                        print(f"正在发送推文: {text}")
                         resp = client.create_tweet(text=text)
-                        print("推文发送成功!")
-                        print(f"响应: {resp}")
+                        print(f"推文发送成功响应: {resp}")
                         tweet_id = None
                         try:
                             data = getattr(resp, 'data', None) or {}
                             tweet_id = data.get('id') if isinstance(data, dict) else getattr(data, 'id', None)
-                            print(f"Tweet ID: {tweet_id}")
                         except Exception:
                             tweet_id = None
                         results.append({'account_id': acc.id, 'status': 'ok', 'tweet_id': tweet_id, 'account_status': acc.status})
@@ -363,10 +355,8 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             task.save(update_fields=['last_status', 'last_success', 'last_failed', 'last_run_at'])
         except Exception:
             pass
+            # return Response({'status': 'failed', 'ai_meta': ai_meta, 'summary': {'ok': ok_count, 'error': err_count}, 'results': results})
         return Response({'status': 'ok', 'ai_meta': ai_meta, 'summary': {'ok': ok_count, 'error': err_count}, 'results': results})
-
-
-from rest_framework.views import APIView
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -397,7 +387,6 @@ class TaskTagsView(APIView):
         """
         为指定任务添加标签
         """
-        print("为指定任务添加标签")
         try:
             task = SimpleTask.objects.get(id=task_id)
             # 检查权限

@@ -31,13 +31,21 @@ from .serializers import PoolAccountSerializer
 class PoolAccountViewSet(viewsets.ModelViewSet):
     queryset = PoolAccount.objects.all().order_by('-updated_at')
     serializer_class = PoolAccountSerializer
-    permission_classes = [IsAuthenticated, IsStaffUser]
+    permission_classes = [IsAuthenticated, IsStaffUser] # 用户权限
 
     def get_queryset(self):
         qs = super().get_queryset()
+        user = self.request.user
         provider = self.request.query_params.get('provider')
         status_v = self.request.query_params.get('status')
         name_q = self.request.query_params.get('q')
+        # 权限隔离：普通用户只能看到自己创建的账户
+        if not user.is_staff:
+            if hasattr(self.queryset.model, 'owner'):
+                qs = qs.filter(owner=user)
+            else:
+                # 如果没有 owner 字段，普通用户只能看到状态为 active 的公共账户
+                qs = qs.filter(status='active')
         if provider:
             qs = qs.filter(provider=provider)
         if status_v:
@@ -46,6 +54,13 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
             qs = qs.filter(name__icontains=name_q)
         return qs
 
+    def perform_create(self, serializer):
+        # 创建时自动设置所有者
+        user = self.request.user
+        if hasattr(serializer.Meta.model, 'owner'):
+            serializer.save(owner=user)
+        else:
+            serializer.save()
 
 # ---- OAuth for PoolAccount (Twitter OAuth1.0a and Facebook OAuth2 minimal) ----
 

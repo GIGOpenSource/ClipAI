@@ -17,7 +17,7 @@ class PoolAccountSerializer(serializers.ModelSerializer):
             'access_token', 'access_token_secret', 'is_ban', 'status', 'usage_policy',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at','owner']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -30,6 +30,7 @@ class PoolAccountSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        owner = validated_data.pop('owner', None)
         acc = PoolAccount(
             provider=validated_data.get('provider'),
             name=validated_data.get('name'),
@@ -38,6 +39,7 @@ class PoolAccountSerializer(serializers.ModelSerializer):
             is_ban=validated_data.get('is_ban', False),
             status=validated_data.get('status', 'active'),
             usage_policy=validated_data.get('usage_policy', 'unlimited'),
+            owner=owner
         )
         if 'access_token' in validated_data:
             acc.set_access_token(validated_data.get('access_token'))
@@ -47,6 +49,9 @@ class PoolAccountSerializer(serializers.ModelSerializer):
         return acc
 
     def update(self, instance, validated_data):
+        owner = validated_data.pop('owner', None)
+        if owner is not None:
+            instance.owner = owner
         for f in ['provider', 'name', 'api_key', 'api_secret', 'is_ban', 'status', 'usage_policy']:
             if f in validated_data:
                 setattr(instance, f, validated_data.get(f))
