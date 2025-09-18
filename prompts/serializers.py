@@ -39,6 +39,8 @@ class PromptConfigSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
+        enabled = attrs.get('enabled', getattr(self.instance, 'enabled', True))
+        content = attrs.get('content', getattr(self.instance, 'content', ''))
         owner_id = attrs.pop('owner_id', None)
         current_user = self.context['request'].user if 'request' in self.context else None
         if owner_id is not None:
@@ -53,8 +55,6 @@ class PromptConfigSerializer(serializers.ModelSerializer):
         if current_user and not current_user.is_staff:  # is_staff 表示管理员（django 内置字段）
             if final_owner != current_user:
                 raise serializers.ValidationError({'owner_id': '非管理员无法设置他人为所有者'})
-        enabled = attrs.get('enabled', getattr(self.instance, 'enabled', True))
-        content = attrs.get('content', getattr(self.instance, 'content', ''))
         if enabled and not content:
             raise serializers.ValidationError('启用状态下 content 必填')
         # 权限检查：只有管理员可以设置其他用户为所有者
