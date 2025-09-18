@@ -12,7 +12,6 @@ services:
       - ./staticfiles:/opt/staticfiles:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    user: "root:root"
     depends_on:
       - web
     networks:
