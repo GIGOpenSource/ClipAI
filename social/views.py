@@ -39,7 +39,7 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         provider = self.request.query_params.get('provider')
         status_v = self.request.query_params.get('status')
         name_q = self.request.query_params.get('q')
-        getrname_q = self.request.query_params.get('name')
+        getname_q = self.request.query_params.get('name')
         remark_q = self.request.query_params.get('remark')  # 添加备注查询参数
         remark_exact = self.request.query_params.get('remark_exact')  # 精确匹配查询参数
         # 权限隔离：普通用户只能看到自己创建的账户
@@ -56,8 +56,8 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         if name_q:
             qs = qs.filter(name__icontains=name_q)
             # 添加备注字段的筛选
-        if getrname_q:
-            qs = qs.filter(name=getrname_q)
+        if getname_q:
+            qs = qs.filter(name__icontains=getname_q)
         if remark_q:
             # 模糊匹配
             qs = qs.filter(remark__icontains=remark_q)
