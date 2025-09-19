@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  nginx:
+    environment:
+      - ENV=test
+      - DOMAIN=gigaisystem.com
+      - WWW_DOMAIN=www.gigaisystem.com
+      - SSL_CERT=/etc/letsencrypt/live/gigaisystem.com_bundle.crt
+      - SSL_KEY=/etc/letsencrypt/live/gigaisystem.com.key
+      - BASE_URL=https://www.gigaisystem.com
+    container_name: clipai_nginx_prod

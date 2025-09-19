@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  nginx:
+    environment:
+      - ENV=production
+      - DOMAIN=gigpulseai.com
+      - WWW_DOMAIN=www.gigpulseai.com
+      - SSL_CERT=/etc/letsencrypt/live/gigpulseai.com_bundle.crt
+      - SSL_KEY=/etc/letsencrypt/live/gigpulseai.com.key
+      - BASE_URL=https://www.gigpulseai.com
+    container_name: clipai_nginx_prod
