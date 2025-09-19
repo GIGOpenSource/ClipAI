@@ -1,3 +1,4 @@
+import random
 import time
 from typing import List, Optional, Dict, Any
 import requests
@@ -38,6 +39,7 @@ class OpenAICompatibleClient:
             'messages': messages,
             'temperature': temperature,
         }
+
         if max_tokens is not None:
             payload['max_tokens'] = max_tokens
 
