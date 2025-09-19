@@ -6,12 +6,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./nginx/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - ./home:/opt/home:ro
       - ./GIG-AI-Admin/dist:/opt/app:ro
       - ./staticfiles:/opt/staticfiles:ro
       - ./nginx/certs:/etc/nginx/certs:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+    environment:
+      - NGINX_ENVSUBST_TEMPLATE_SUFFIX=.template
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx/conf.d
     depends_on:
       - web
     networks:
