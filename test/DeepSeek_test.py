@@ -1,24 +1,110 @@
-import os
-from openai import OpenAI
+import requests
+import json
 
-client = OpenAI(
-    # 若没有配置环境变量，请用阿里云百炼API Key将下行替换为：api_key="sk-xxx",
-    api_key="sk-7fbfac05d6314d779d70da5702583576",
-    base_url="https://api.deepseek.com"
-)
+# self.headers {'Content-Type': 'application/json', 'Authorization': 'Bearer sk-7fbfac05d6314d779d70da5702583576'}
+# 生成的header: {'Content-Type': 'application/json', 'Authorization': 'Bearer sk-7fbfac05d6314d779d70da5702583576'}
+class DeepSeekClient:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.deepseek.com"
+        self.headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        print("api_key",api_key)
+        print("self.headers",self.headers)
+    def chat_completion(self, messages, model="deepseek-chat", **kwargs):
+        """
+        调用 DeepSeek Chat Completion API
 
-completion = client.chat.completions.create(
-    model="deepseek-v3.1",  # 此处以 deepseek-v3.1 为例，可按需更换模型名称。
-    messages=[
-        {'role': 'user', 'content': '9.9和9.11谁大'}
+        Args:
+            messages (list): 消息列表，格式如 [{"role": "user", "content": "Hello"}]
+            model (str): 模型名称，默认为 "deepseek-chat"
+            **kwargs: 其他可选参数，如 temperature, max_tokens 等
+
+        Returns:
+            dict: API 响应结果
+        """
+        url = f"{self.base_url}/chat/completions"
+        print("url",url)
+        # 构建请求数据
+        data = {
+            "model": model,
+            "messages": messages,
+            "stream": False
+        }
+
+        # 添加其他可选参数
+        data.update(kwargs)
+
+        try:
+            response = requests.post(
+                url,
+                headers=self.headers,
+                json=data,
+                timeout=30
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except requests.exceptions.RequestException as e:
+            print(f"API 调用错误: {e}")
+            if hasattr(e.response, 'text'):
+                print(f"错误详情: {e.response.text}")
+            raise
+        except json.JSONDecodeError as e:
+            print(f"JSON 解析错误: {e}")
+            raise
+
+    def simple_chat(self, user_message, system_message="You are a helpful assistant."):
+        """
+        简单的聊天接口
+
+        Args:
+            user_message (str): 用户消息
+            system_message (str): 系统消息
+
+        Returns:
+            str: AI 回复内容
+        """
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+
+        response = self.chat_completion(messages)
+        return response['choices'][0]['message']['content']
+
+
+# 使用示例
+if __name__ == "__main__":
+    # 初始化客户端
+    api_key = "sk-7fbfac05d6314d779d70da5702583576"
+    client = DeepSeekClient(api_key)
+
+    # 方法1: 使用完整接口
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello!"}
     ]
-)
 
-# 判断是否有reasoning_content
-# deepseek-v3.1默认不输出思考过程。如需输出思考过程，请参见流式输出的代码。
-if hasattr(completion.choices[0].message, 'reasoning_content'):
-    print("思考过程：")
-    print(completion.choices[0].message.reasoning_content)
+    try:
+        response = client.chat_completion(messages)
+        print("完整响应:")
+        print(json.dumps(response, indent=2, ensure_ascii=False))
 
-print("最终答案：")
-print(completion.choices[0].message.content)
+        # 提取回复内容
+        reply = response['choices'][0]['message']['content']
+        print(f"\nAI 回复: {reply}")
+
+    except Exception as e:
+        print(f"调用失败: {e}")
+
+    print("\n" + "=" * 50 + "\n")
+
+    # 方法2: 使用简单接口
+    try:
+        reply = client.simple_chat("你好，介绍一下你自己")
+        print(f"简单聊天回复: {reply}")
+    except Exception as e:
+        print(f"调用失败: {e}")

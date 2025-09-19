@@ -25,6 +25,7 @@ class OpenAICompatibleClient:
     ) -> Dict[str, Any]:
         # url = f"{self.base_url}/v1/chat/completions"
         url = f"{self.base_url}/chat/completions"
+        print("生成的链接为:",url)
         # url = f"{self.base_url}"
         headers = {
             'Authorization': f'Bearer {self.api_key}',
