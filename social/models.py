@@ -29,6 +29,7 @@ class PoolAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='pool_accounts')
+    remark = models.CharField(max_length=500, blank=True, help_text='备注信息')
 
     class Meta:
         ordering = ['provider', 'name']
