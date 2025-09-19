@@ -1,10 +1,5 @@
 from rest_framework import serializers
 from .models import PoolAccount
-
-
- 
-
-
 class PoolAccountSerializer(serializers.ModelSerializer):
     api_secret = serializers.CharField(required=False, allow_blank=True)
     access_token = serializers.CharField(required=False, allow_blank=True)
