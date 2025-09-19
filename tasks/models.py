@@ -46,6 +46,7 @@ class SimpleTask(models.Model):
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_success = models.BooleanField(default=False, help_text='上次执行是否全部成功')
     last_failed = models.BooleanField(default=False, help_text='上次执行是否存在失败')
+    task_remark = models.CharField(max_length=255, blank=True, help_text='备注信息')
     last_text = models.TextField(blank=True, help_text='上次实际发送的最终文案（含 tags/mentions）')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

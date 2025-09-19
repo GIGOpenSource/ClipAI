@@ -24,6 +24,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     prompt = serializers.PrimaryKeyRelatedField(queryset=PromptConfig.objects.all(), required=False, allow_null=True)
     # mentions = serializers.CharField(required=False, allow_blank=True)
     # tags = serializers.CharField(required=False, allow_blank=True)
+    task_remark = serializers.CharField(required=False, allow_blank=True)
+
     prompt_name = serializers.SerializerMethodField()
     # 人性化输入字段（后端会映射到 payload）
     twitter_reply_to_tweet_id = serializers.CharField(write_only=True, required=False, allow_blank=True, help_text='Twitter 回复的推文 ID（仅当 type=reply_comment 且 provider=twitter）')
@@ -40,9 +42,9 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'owner', 'type', 'provider', 'language', 'text', 'mentions', 'tags', 'payload', 'selected_accounts', 'prompt','prompt_name',
             # 人性化输入字段（write-only）
-            'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id',
+            'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id','last_run_at',
             # 只读运行结果
-            'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
+            'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text','task_remark',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'created_at', 'updated_at']

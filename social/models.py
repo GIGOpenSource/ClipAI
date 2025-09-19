@@ -14,7 +14,7 @@ class PoolAccount(models.Model):
         ('facebook', 'Facebook'),
     ]
     provider = models.CharField(max_length=32, choices=PROVIDER_CHOICES)    # 提供商Twitter 或 Facebook
-    name = models.CharField(max_length=200)                                 # 账户名称
+    name = models.CharField(max_length=200)
     api_key = models.CharField(max_length=255, blank=True)
     api_secret = models.CharField(max_length=255, blank=True)
     access_token = models.TextField(blank=True)
@@ -29,7 +29,7 @@ class PoolAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='pool_accounts')
-    remark = models.CharField(max_length=500, blank=True, help_text='备注信息')
+    remark = models.CharField(max_length=255, blank=True, help_text='备注信息')
 
     class Meta:
         ordering = ['provider', 'name']
