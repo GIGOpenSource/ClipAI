@@ -6,9 +6,9 @@ from .models import PoolAccount
 
 
 class PoolAccountSerializer(serializers.ModelSerializer):
-    api_secret = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    access_token = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    access_token_secret = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    api_secret = serializers.CharField(required=False, allow_blank=True)
+    access_token = serializers.CharField(required=False, allow_blank=True)
+    access_token_secret = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = PoolAccount
