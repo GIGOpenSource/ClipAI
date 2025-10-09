@@ -124,8 +124,8 @@ if POSTGRES_HOST:
             'NAME': os.getenv('POSTGRES_DB', 'clipai'),
             'USER': os.getenv('POSTGRES_USER', 'clipai'),
             'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'clipai'),
-            'HOST': POSTGRES_HOST,
-            'PORT': os.getenv('POSTGRES_PORT', '5432'),
+            'HOST': "192.168.77.222",
+            'PORT': os.getenv('POSTGRES_PORT', '5436'),
         }
     }
 else:

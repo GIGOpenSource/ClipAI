@@ -211,6 +211,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
 
             # 附加 tags/mentions（mentions 前缀 @）
             final_text = text  # 使用为当前账号生成的文本
+            print(f"为账号 {acc.id} 生成的文本：{final_text}")
             if task.tags:
                 tail = ' ' + ' '.join('#' + t.lstrip('#') for t in task.tags[:5])
                 final_text = (final_text + tail).strip()
@@ -412,6 +413,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             pass
 
         return Response({'status': 'ok', 'summary': {'ok': ok_count, 'error': err_count}, 'results': results})
+
 
 from rest_framework.views import APIView
 from rest_framework.response import Response

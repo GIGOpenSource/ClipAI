@@ -10,6 +10,7 @@ env/
 ENV/
 
 clipAIvenv/
+clipAi_venv/
 # Django
 db.sqlite3
 *.sqlite3

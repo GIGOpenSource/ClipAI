@@ -17,16 +17,16 @@ class OpenAICompatibleClient:
         self.max_retries = max_retries
 
     def chat_completion(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        temperature: float = 0.7,
-        max_tokens: Optional[int] = None,
-        extra_headers: Optional[Dict[str, str]] = None,
+            self,
+            model: str,
+            messages: List[Dict[str, str]],
+            temperature: float = 1.5,
+            max_tokens: Optional[int] = None,
+            extra_headers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         # url = f"{self.base_url}/v1/chat/completions"
         url = f"{self.base_url}/chat/completions"
-        print("生成的链接为:",url)
+        print("生成的链接为:", url)
         # url = f"{self.base_url}"
         headers = {
             'Authorization': f'Bearer {self.api_key}',
@@ -37,7 +37,9 @@ class OpenAICompatibleClient:
         payload = {
             'model': model,
             'messages': messages,
-            'temperature': temperature,
+            'temperature': random.uniform(0.7, temperature),
+            'top_p': 0.9,
+            'frequency_penalty': 0.5 # 介于 -2.0 和 2.0 之间的数字。如果该值为正，那么新 token 会根据其在已有文本中的出现频率受到相应的惩罚，降低模型重复相同内容的可能性。
         }
 
         if max_tokens is not None:
@@ -79,5 +81,3 @@ class OpenAICompatibleClient:
                 'total': usage.get('total_tokens'),
             }
         }
-
-
