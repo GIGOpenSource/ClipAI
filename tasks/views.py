@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsOwnerOrAdmin
+from utils.utils import logger
 from .models import SimpleTask, SimpleTaskRun
 from .serializers import SimpleTaskSerializer
 from stats.utils import record_success_run
@@ -171,7 +172,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                         if user_text:
                             messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
 
-                        print(f"为账号 {acc.id} 调用 chat_completion")
+                        logger.info(f"为账号 {acc.id} 调用 chat_completion")
                         res = cli.chat_completion(model=cfg.model, messages=messages)
                         text = (res.get('content') or '').strip()
                         if text:
@@ -187,7 +188,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                             break
                     except Exception as e:
                         last_err = str(e)
-                        print(f"为账号 {acc.id} 调用模型失败：{last_err}")
+                        logger.info(f"为账号 {acc.id} 调用模型失败：{last_err}")
 
             # 如果没有生成文本但有用户文本，使用用户文本
             if not text and user_text:
@@ -211,7 +212,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
 
             # 附加 tags/mentions（mentions 前缀 @）
             final_text = text  # 使用为当前账号生成的文本
-            print(f"为账号 {acc.id} 生成的文本：{final_text}")
+            logger.info(f"为账号 {acc.id} 生成的文本：{final_text}")
             if task.tags:
                 tail = ' ' + ' '.join('#' + t.lstrip('#') for t in task.tags[:5])
                 final_text = (final_text + tail).strip()
@@ -246,7 +247,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     )
                     if task.type == 'post':
                         resp = client.create_tweet(text=final_text)
-                        print(f"推文发送成功响应: {resp}")
+                        logger.info(f"推文发送成功响应: {resp}")
                         tweet_id = None
                         try:
                             data = getattr(resp, 'data', None) or {}

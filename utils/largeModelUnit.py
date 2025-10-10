@@ -12,7 +12,6 @@ import random
 import json
 from typing import List, Optional, Dict, Any
 
-
 class LargeModelUnit(object):
     def __init__(self, model: str, api_key: str, base_url: str, temperature: float = 0.7):
         self.model = model

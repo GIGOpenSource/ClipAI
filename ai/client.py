@@ -3,6 +3,8 @@ import time
 from typing import List, Optional, Dict, Any
 import requests
 
+from utils.utils import logger
+
 
 class OpenAICompatibleClient:
     """Minimal OpenAI-compatible client (chat.completions).
@@ -26,7 +28,7 @@ class OpenAICompatibleClient:
     ) -> Dict[str, Any]:
         # url = f"{self.base_url}/v1/chat/completions"
         url = f"{self.base_url}/chat/completions"
-        print("生成的链接为:", url)
+        logger.info("请求的URL为:", url)
         # url = f"{self.base_url}"
         headers = {
             'Authorization': f'Bearer {self.api_key}',

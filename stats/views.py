@@ -7,6 +7,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.http import HttpResponse
 import csv
 from drf_spectacular.utils import extend_schema
+
+from utils.utils import logger
 from .models import DailyStat
 from .serializers import SummaryResponseSerializer
 
@@ -47,7 +49,7 @@ class OverviewView(APIView):
             'date', 'account_count', 'ins', 'x', 'fb', 'post_count',
             'reply_comment_count', 'reply_message_count', 'total_impressions'
         ).order_by('-date'))
-        print(data)
+        logger.info(data)
         # CSV 导出
         if request.query_params.get('format') == 'csv':
             response = HttpResponse(content_type='text/csv; charset=utf-8')
