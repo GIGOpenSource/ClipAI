@@ -7,14 +7,10 @@ from datetime import datetime
 
 def create_twitter_client():
     """创建Twitter客户端"""
-    api_key = 'Tive2BlUTyy6J60ZgOAQ2cikK'
-    api_secret = 'X2DvWeboT732qddqGrGQ5ftsJ49ybMEIX0st7naGE08hyz51w1'
-    access_token =  '1757283066005827584-hbKjQlyiFXDI8OWlSb5IuX2VqXd0ft'
-    access_token_secret = 'OiRP5nsRAV62IkWGiF6wMzAtsZcnfLVzHK9WaSyA52NAH'
-    # api_key = 'j6LGmKd900BffcebIC2LEAMoO'
-    # api_secret = 'ljIda2o5bCcUJqlXmF4rhRib672A9OOOmd3W5IBQzTLXsGtYbP'
-    # access_token =  '1757587650905591808-JFyAVeDMS6q72SPEHxH7jMBfnMhGMW'
-    # access_token_secret = 'DvOqMstuw8xjxasEitHuY7t6OTmv5Ps1KsKog2BcOasuE'
+    api_key = 'j6LGmKd900BffcebIC2LEAMoO'
+    api_secret = 'ljIda2o5bCcUJqlXmF4rhRib672A9OOOmd3W5IBQzTLXsGtYbP'
+    access_token =  '1757587650905591808-JFyAVeDMS6q72SPEHxH7jMBfnMhGMW'
+    access_token_secret = 'DvOqMstuw8xjxasEitHuY7t6OTmv5Ps1KsKog2BcOasuE'
     if not all([api_key, api_secret, access_token, access_token_secret]):
         raise ValueError("请设置Twitter API凭证环境变量")
 
@@ -179,36 +175,37 @@ def main():
         # 创建Twitter客户端
         client = create_twitter_client()
         time.sleep(5)
-        #
-        # # 发布测试推文
-        # test_text = f"测试推文发布3 评论点赞 转发 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} #Test @LypResf65149 @liangwater"
-        # print(f"正在发布推文: {test_text}")
-        #
-        # tweet_id = post_tweet(client, test_text)
-        #
-        # if not tweet_id:
-        #     print("推文发布失败，无法获取推文ID")
-        #     return
-        #
-        # print(f"推文ID: {tweet_id}")
-        #
-        # # 等待一段时间让数据同步
-        # print("等待10秒让数据同步...")
-        # time.sleep(10)
 
-        # 1976536993338392825
 
-        tweet_id = 1976537965280231623
-        # 获取推文指标
-        metrics = get_tweet_metrics(client, tweet_id)
+        for i in range(5):
+            # 发布测试推文
+            test_text = f"测试推文发布 16：29  第{i}次  评论点赞 转发 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} #Test @LypResf65149 @liangwater"
+            print(f"正在发布推文: {test_text}")
 
-        if metrics:
-            print("\n=== 推文指标数据 ===")
+            tweet_id = post_tweet(client, test_text)
+
+            if not tweet_id:
+                print("推文发布失败，无法获取推文ID")
+                return
+
             print(f"推文ID: {tweet_id}")
-            for key, value in metrics.items():
-                print(f"{key}: {value}")
-        else:
-            print("无法获取推文指标数据")
+
+            # 等待一段时间让数据同步
+            print("等待10秒让数据同步...")
+            time.sleep(10)
+
+            # 获取推文指标
+            metrics = get_tweet_metrics(client, tweet_id)
+            if metrics:
+                print("\n=== 推文指标数据 ===")
+                print(f"推文ID: {tweet_id}")
+                for key, value in metrics.items():
+                    print(f"{key}: {value}")
+            else:
+                print("无法获取推文指标数据")
+
+
+
 
     except Exception as e:
         print(f"程序执行出错: {e}")
