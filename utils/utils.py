@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+
 class LoggingUtil:
     def __init__(self):
         self.logger = logging.getLogger('ClipAI')
@@ -31,6 +32,10 @@ class LoggingUtil:
 
     def warn(self, message):
         self.logger.warning(message)
+
+    def error(self, message):
+        self.logger.error(message)
+
 
 # 全局日志对象
 logger = LoggingUtil()
