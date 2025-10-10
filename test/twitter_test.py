@@ -1,12 +1,11 @@
 # 修正后的 twitter_test.py
 import tweepy
 
-
 # 创建模拟的对象
 class MockAccount:
     def __init__(self):
-        self.api_key = 'vHtNuhK3J2hYc7xKN3grMtC3u'
-        self.api_secret = 'pYwgaM8yUngNcmAEguejw1FLUFw78bEj9P1vnp9y2Vr6VwOUry'
+        self.api_key = 'Tive2BlUTyy6J60ZgOAQ2cikK'
+        self.api_secret = 'X2DvWeboT732qddqGrGQ5ftsJ49ybMEIX0st7naGE08hyz51w1'
         # 注意：这里应该是 get_access_token() 和 get_access_token_secret() 方法
         # 但现在直接使用字符串值进行测试
 
@@ -28,8 +27,8 @@ def test_twitter_post():
         # 官方库 Tweepy，使用 OAuth1.0a
         api_key = acc.api_key
         api_secret = acc.api_secret
-        at = '1735197684389257216-2qhA2s9rjFsKN7PGPfkv4sd034L6Lq'  # 直接使用字符串
-        ats = 'sXy5MJPIj901h2G5eFIFNjagkUdV460KtEt5n3xuuaSBY'  # 直接使用字符串
+        at = '1757283066005827584-hbKjQlyiFXDI8OWlSb5IuX2VqXd0ft'  # 直接使用字符串
+        ats = 'OiRP5nsRAV62IkWGiF6wMzAtsZcnfLVzHK9WaSyA52NAH'  # 直接使用字符串
 
         client = tweepy.Client(
             consumer_key=api_key,
