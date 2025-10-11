@@ -8,14 +8,11 @@
 @description : 推特工具类
 """
 import time
+from math import trunc
+
 from tweepy import Client
 from tasks.models import TArticle as Article
 from django.db import transaction
-
-
-# from utils.utils import LoggingUtil
-#
-# logger = LoggingUtil()
 
 
 class TwitterUnit(object):
@@ -99,6 +96,7 @@ class TwitterUnit(object):
                         'citationCount': result.get('quote_count', 0),  # 引用数
                         'createDate': response.data.created_at  # 创建时间
                     }
+                    updateArticle(tweet_id, data)
                 else:
                     data = dict()
                 if hasattr(commentResponse, 'data') and commentResponse.data:
@@ -161,11 +159,28 @@ def createArticle(platform: str, result: dict, robotId: int) -> Article:
         return article
 
 
-if __name__ == '__main__':
-    api_key = '5WZ7VAKz6PT0BilwJf9gNOuJq'
-    api_secret = '8cCnrUGIgXNtSGHGNX8SQOgUB0W1IKkmIZvIQrGJBwwnRkpe70'
-    access_token = '1757680175628566528-5LVUE0quEuKxM85Sx6H1w2mRJ2hunl'
-    access_token_secret = '6XTTjE7gBwB3TqCe3fuo1WLfJQcAS76GFBE7z7sxhkxGL'
-    client = TwitterUnit(api_key, api_secret, access_token, access_token_secret)
-    flags, data = client.sendTwitter("测试")
-    print(data)
+@transaction.atomic
+def updateArticle(articleId: str, data: dict) -> tuple[bool, Article | None]:
+    """
+    回复特定评论
+   :param articleId: 文章ID
+   :param data: 获取到的文章数据 点赞量等
+   data = {
+            'pageViews': result.get('impression_count', 0),  # 浏览量(曝光)
+            'commentCount': result.get('reply_count', 0),  # 评论数
+            'likeCount': result.get('like_count', 0),  # 点赞数
+            'repostCount': result.get('retweet_count', 0),  # 转发数
+            'citationCount': result.get('quote_count', 0),  # 引用数
+            'createDate': response.data.created_at  # 创建时间
+        }
+   :return:
+   """
+    try:
+        article = Article.objects.get(article_id=articleId)
+        article.impression_count = data.get("pageViews", 0)
+        article.comment_count = data.get("commentCount", 0)
+        article.like_count = data.get("likeCount", 0)
+        article.save()
+        return True, article
+    except Article.DoesNotExist:
+        return False, None
