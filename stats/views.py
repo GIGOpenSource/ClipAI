@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db.models import Sum
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -6,14 +6,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import atexit
 import threading
-
-from social.models import PoolAccount
-from tasks.models import TArticle as  Article, TArticleComments as ArticleComment
-from utils.twitterUnit import TwitterUnit
-
-from django.db.models import Sum
-from datetime import timedelta
-from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.http import HttpResponse
@@ -23,10 +15,13 @@ from drf_spectacular.utils import extend_schema
 from utils.utils import logger
 from .models import DailyStat
 from .serializers import SummaryResponseSerializer
+from tasks.models import TArticle
+from social.models import PoolAccount
 
 # 全局调度器实例和锁
 _scheduler_instance = None
 _scheduler_lock = threading.Lock()
+
 
 def get_global_scheduler():
     """
@@ -41,30 +36,43 @@ def get_global_scheduler():
             atexit.register(lambda: _scheduler_instance.shutdown() if _scheduler_instance.running else None)
         return _scheduler_instance
 
+
 class SummaryView(APIView):
     permission_classes = [IsAuthenticated]
+
     @extend_schema(summary='统计概览（仅昨天当前用户）', tags=['数据统计'], responses=SummaryResponseSerializer)
     def get(self, request):
-        if not (request.user and request.user.is_authenticated):
-            return Response({'total_runs': 0, 'succeeded': 0, 'failed': 0, 'success_rate': 0, 'avg_duration_ms': 0, 'sla_met_rate': None})
-        yesterday = timezone.now().date() - timedelta(days=1)
-        stat = DailyStat.objects.filter(date=yesterday, owner_id=request.user.id).first()
-        post = getattr(stat, 'post_count', 0) if stat else 0
-        r_c = getattr(stat, 'reply_comment_count', 0) if stat else 0
-        r_m = getattr(stat, 'reply_message_count', 0) if stat else 0
-        total = int(post) + int(r_c) + int(r_m)
-        return Response({
-            'total_runs': total,
-            'succeeded': total,
-            'failed': 0,
-            'success_rate': 1 if total else 0,
-            'avg_duration_ms': 0,
-            'sla_met_rate': None,
-        })
+        # if not (request.user and request.user.is_authenticated):
+        #     return Response({'total_runs': 0, 'succeeded': 0, 'failed': 0, 'success_rate': 0, 'avg_duration_ms': 0, 'sla_met_rate': None})
+        # yesterday = timezone.now().date() - timedelta(days=1)
+        # stat = DailyStat.objects.filter(date=yesterday, owner_id=request.user.id).first()
+        # post = getattr(stat, 'post_count', 0) if stat else 0
+        # r_c = getattr(stat, 'reply_comment_count', 0) if stat else 0
+        # r_m = getattr(stat, 'reply_message_count', 0) if stat else 0
+        # total = int(post) + int(r_c) + int(r_m)
+        # return Response({
+        #     'total_runs': total,
+        #     'succeeded': total,
+        #     'failed': 0,
+        #     'success_rate': 1 if total else 0,
+        #     'avg_duration_ms': 0,
+        #     'sla_met_rate': None,
+        # })
+        userId = request.user
+        robotList = PoolAccount.objects.filter(owner_id=userId).values('id')
+        robotList = [robot["id"] for robot in robotList]
+        articleData = TArticle.objects.filter(robot_id__in=robotList).values('platform').annotate(
+            total_impression_count=Sum('impression_count'),
+            total_comment_count=Sum('comment_count'),
+            total_message_count=Sum('message_count'),
+            total_like_count=Sum('like_count'),
+            total_click_count=Sum('click_count'))
+        return Response(data=articleData)
 
 
 class OverviewView(APIView):
     permission_classes = [IsAuthenticated]
+
     @extend_schema(summary='昨日统计明细（当前用户，单日一行）', tags=['数据统计'])
     def get(self, request):
         if not (request.user and request.user.is_authenticated):
@@ -90,6 +98,7 @@ class OverviewView(APIView):
             return response
         return Response(data)
 
+
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
 from django.utils import timezone
@@ -97,6 +106,7 @@ from datetime import timedelta
 
 # 修改 stats/views.py 中的 CollectArticalView 类
 from utils.c_scheduler import collect_recent_articles_data
+
 
 class CollectArticalView(APIView):
     """

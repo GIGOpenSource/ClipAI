@@ -51,7 +51,7 @@ class TwitterUnit(object):
             try:
                 if hasattr(response, 'data') and response.data:
                     data = response.data
-                    createArticle("twitter", data, robotId)
+                    createArticle("x", data, robotId)
                 else:
                     data = dict()
             except:
