@@ -105,6 +105,7 @@ class TArticle(models.Model):
     updated_at = models.DateTimeField()
     article_id = models.CharField(unique=True, max_length=50)
     article_text = models.TextField()
+    robot_id = models.IntegerField()
 
     class Meta:
         managed = False

@@ -38,10 +38,11 @@ class TwitterUnit(object):
             wait_on_rate_limit=True
         )
 
-    def sendTwitter(self, text: str) -> tuple[bool, dict | None]:
+    def sendTwitter(self, text: str, robotId: int) -> tuple[bool, dict | None]:
         """
         发布推文
         :param text: 待发送推文消息体
+        :param robotId: 机器人ID
         :return:
         """
         try:
@@ -50,7 +51,7 @@ class TwitterUnit(object):
             try:
                 if hasattr(response, 'data') and response.data:
                     data = response.data
-                    createArticle("twitter",data)
+                    createArticle("twitter", data, robotId)
                 else:
                     data = dict()
             except:
@@ -128,9 +129,10 @@ class TwitterUnit(object):
 
 
 @transaction.atomic
-def createArticle(platform: str, result: dict) -> Article:
+def createArticle(platform: str, result: dict, robotId: int) -> Article:
     """
     :param platform:平台名
+    :param robotId
     :param result:发送成功返回内容 {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
     """
     article_id = result.get('id')
@@ -140,11 +142,12 @@ def createArticle(platform: str, result: dict) -> Article:
             article_id=article_id,
             platform=platform,
             article_text=article_text,
-            impression_count = 0,
-            comment_count = 0 ,
-            message_count = 0,
-            like_count = 0,
-            click_count = 0,
+            impression_count=0,
+            comment_count=0,
+            message_count=0,
+            like_count=0,
+            click_count=0,
+            robot_id=robotId,
             created_at=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         )
         return article

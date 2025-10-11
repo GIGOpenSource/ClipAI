@@ -244,7 +244,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     ats = acc.get_access_token_secret()
                     client = TwitterUnit(api_key, api_secret, at, ats)
                     if task.type == 'post':
-                        flag, resp = client.sendTwitter(text=final_text)
+                        flag, resp = client.sendTwitter(final_text, int(acc.id))
                         logger.info(f"推文发送成功响应: {resp}")
                         """
                         {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
