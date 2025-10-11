@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsOwnerOrAdmin
-from test.QWEN_test import client
 from utils.utils import logger
 from .models import SimpleTask, SimpleTaskRun
 from .serializers import SimpleTaskSerializer
