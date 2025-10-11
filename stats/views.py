@@ -43,7 +43,6 @@ def get_global_scheduler():
 
 class SummaryView(APIView):
     permission_classes = [IsAuthenticated]
-
     @extend_schema(summary='统计概览（仅昨天当前用户）', tags=['数据统计'], responses=SummaryResponseSerializer)
     def get(self, request):
         if not (request.user and request.user.is_authenticated):
