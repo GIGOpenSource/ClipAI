@@ -67,19 +67,19 @@ class TwitterUnit(object):
         :param tweet_id:推文文章ID
         :return:
         """
-        # logger.info(f"正在获取推文 {tweet_id} 的指标")
-        response = self.client.get_tweet(id=tweet_id, expansions=['author_id'],
-                                         tweet_fields=['public_metrics', 'created_at', 'context_annotations'],
-                                         user_auth=True)
-        commentResponse = self.client.search_recent_tweets(
-            query=f"conversation_id:{tweet_id} is:reply",
-            tweet_fields=['author_id', 'conversation_id', 'created_at'],
-            user_fields=['username', 'name'],
-            expansions=['author_id'],
-            max_results=10,
-            user_auth=True
-        )
         try:
+            # logger.info(f"正在获取推文 {tweet_id} 的指标")
+            response = self.client.get_tweet(id=tweet_id, expansions=['author_id'],
+                                             tweet_fields=['public_metrics', 'created_at', 'context_annotations'],
+                                             user_auth=True)
+            commentResponse = self.client.search_recent_tweets(
+                query=f"conversation_id:{tweet_id} is:reply",
+                tweet_fields=['author_id', 'conversation_id', 'created_at'],
+                user_fields=['username', 'name'],
+                expansions=['author_id'],
+                max_results=10,
+                user_auth=True
+            )
             try:
                 if hasattr(response, 'data') and response.data.public_metrics:
                     result = response.data.public_metrics
