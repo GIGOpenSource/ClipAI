@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': '推文评论',
                 'verbose_name_plural': '推文评论',
-                'db_table': 't_tweet_comments',
+                'db_table': 't_article_comments',
                 'indexes': [models.Index(fields=['tweet_id'], name='t_tweet_com_tweet_i_260e46_idx'), models.Index(fields=['commenter_id'], name='t_tweet_com_comment_6738cb_idx'), models.Index(fields=['created_at'], name='t_tweet_com_created_cf4be4_idx')],
             },
         ),
