@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 """
-@Project ：ClipAI 
+@Project ：ClipAI
 @File    ：twitterUnit.py
 @Author  ：LYP
-@Date    ：2025/10/10 15:21 
+@Date    ：2025/10/10 15:21
 @description : 推特工具类
 """
 import time
 from tweepy import Client
+from tasks.models import TArticle as Article
+from django.db import transaction
 
 
 # from utils.utils import LoggingUtil
@@ -48,6 +50,7 @@ class TwitterUnit(object):
             try:
                 if hasattr(response, 'data') and response.data:
                     data = response.data
+                    createArticle("twitter",data)
                 else:
                     data = dict()
             except:
@@ -124,11 +127,34 @@ class TwitterUnit(object):
             return False
 
 
+@transaction.atomic
+def createArticle(platform: str, result: dict) -> Article:
+    """
+    :param platform:平台名
+    :param result:发送成功返回内容 {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
+    """
+    article_id = result.get('id')
+    article_text = result.get('text')
+    if not Article.objects.filter(id=article_id, platform=platform).exists():
+        article = Article.objects.create(
+            article_id=article_id,
+            platform=platform,
+            article_text=article_text,
+            impression_count = 0,
+            comment_count = 0 ,
+            message_count = 0,
+            like_count = 0,
+            click_count = 0,
+            created_at=time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+        )
+        return article
+
+
 if __name__ == '__main__':
-    api_key = '48HHyhw92FV9hwp2JfM2VpjJ6'
-    api_secret = 'GPwBw3p5t7O2ryUNdbWUpc0ROjrRjbceWSYLDj1tIXxXe7XD9M'
-    access_token = '1757141001687511040-ITIEcDJ5OSF1Jksnk4kSHMJALVX3L5'
-    access_token_secret = 'ENxoQtZpI6gSEgEtu4Vdz7fDBNOXJ1zYv1YftZCdeGXEz'
+    api_key = '5WZ7VAKz6PT0BilwJf9gNOuJq'
+    api_secret = '8cCnrUGIgXNtSGHGNX8SQOgUB0W1IKkmIZvIQrGJBwwnRkpe70'
+    access_token = '1757680175628566528-5LVUE0quEuKxM85Sx6H1w2mRJ2hunl'
+    access_token_secret = '6XTTjE7gBwB3TqCe3fuo1WLfJQcAS76GFBE7z7sxhkxGL'
     client = TwitterUnit(api_key, api_secret, access_token, access_token_secret)
     flags, data = client.sendTwitter("测试")
     print(data)
