@@ -10,14 +10,16 @@
 import requests
 import random
 import json
-from typing import List, Optional, Dict, Any
+from typing import List, Dict
+
 
 class LargeModelUnit(object):
     def __init__(self, model: str, api_key: str, base_url: str, temperature: float = 0.7):
         self.model = model
         self.api_key = api_key
         self.base_url = base_url
-        self.payload = {"model": self.model, "temperature": random.uniform(temperature, 2)}
+        self.payload = {"model": self.model, "temperature": random.uniform(temperature, 2), "top_p": 0.9,
+                        "presence_penalty": 0.5}
         self.headers = {'Content-Type': 'application/json', 'Accept': 'application/json',
                         'Authorization': f'Bearer {self.api_key}'}
 
@@ -28,28 +30,38 @@ class LargeModelUnit(object):
         :return:
         """
         self.payload["messages"] = messages
-        self.payload["top_p "] = 0.9
-        self.payload["presence_penalty"] = 0.5
-        headers = {'Authorization': f'Bearer {self.api_key}', 'Content-Type': 'application/json', }
         resp = requests.post(self.base_url, json=self.payload, headers=self.headers).json()
         try:
             return True, resp["choices"][0]["message"]["content"]
         except:
             return False, ""
 
-    def generateToDeepSeek(self, messages: str) -> tuple[int, str]:
+    def generateToDeepSeek(self, messages: List[Dict[str, str]]) -> tuple[int, str]:
         """
         DeepSeek生成提示词
         :param messages:
         :return:
         """
-        self.payload["prompt"] = messages
-        self.payload["top_p "] = 0.9
-        self.payload["presence_penalty"] = 0.5
-
+        self.payload["messages"] = messages
         resp = requests.post(self.base_url, data=json.dumps(self.payload), headers=self.headers).json()
 
         try:
-            return True, resp["choices"][0]["text"]
+            return True, resp["choices"][0]["message"]["content"]
         except:
             return False, ""
+
+
+if __name__ == '__main__':
+    base_url = "https://api.deepseek.com/chat/completions"
+    model = "deepseek-chat"
+    api_key = "sk-7fbfac05d6314d779d70da5702583576"
+    base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
+    messages = [
+        {'role': 'system', 'content': base_sys},
+        {'role': 'system',
+         'content': 'Target language: English. Reply ONLY in English. Keep it short and friendly.'},
+        {'role': 'user', 'content': f"Please write a short post for deepseek."},
+    ]
+    client = LargeModelUnit(model, api_key, base_url)
+    flag,message  = client.generateToDeepSeek( messages)
+    print(message)

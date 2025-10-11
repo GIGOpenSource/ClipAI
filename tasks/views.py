@@ -9,6 +9,10 @@ from .models import SimpleTask, SimpleTaskRun
 from .serializers import SimpleTaskSerializer
 from stats.utils import record_success_run
 from django.utils import timezone
+from ai.models import AIConfig
+from social.models import PoolAccount
+from utils.largeModelUnit import LargeModelUnit
+from utils.twitterUnit import TwitterUnit
 
 
 @extend_schema_view(
@@ -45,9 +49,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         task = self.get_object()
-        from ai.models import AIConfig
-        from ai.client import OpenAICompatibleClient
-        from social.models import PoolAccount
 
         # Helper: extract HTTP status code from exceptions
         def _extract_status_code(exc):
@@ -142,8 +143,9 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             if should_generate_content:
                 for cfg in ai_qs:
                     try:
-                        cli = OpenAICompatibleClient(base_url=cfg.base_url or 'https://api.openai.com',
-                                                     api_key=cfg.api_key)
+                        # cli = OpenAICompatibleClient(base_url=cfg.base_url or 'https://api.openai.com',
+                        #                              api_key=cfg.api_key)
+                        cli = LargeModelUnit(cfg.model, cfg.api_key, cfg.base_url)
                         # Build system and user prompts per language
                         if lang_code == 'en':
                             base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
@@ -173,15 +175,17 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                             messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
 
                         logger.info(f"为账号 {acc.id} 调用 chat_completion")
-                        res = cli.chat_completion(model=cfg.model, messages=messages)
-                        text = (res.get('content') or '').strip()
-                        if text:
+                        if cfg.provider == "openai":
+                            flag,text = cli.generateToOpenAI(messages=messages)
+                        if cfg.provider =="deepseek":
+                            flag,text = cli.generateToDeepSeek(messages=messages)
+                        if flag:
                             ai_meta = {
                                 'model': cfg.model,
                                 'provider': cfg.provider,
-                                'latency_ms': res.get('latency_ms'),
-                                'tokens': res.get('tokens'),
-                                'used_prompt': getattr(task.prompt, 'name', None),
+                                # 'latency_ms': res.get('latency_ms'),
+                                # 'tokens': res.get('tokens'),
+                                # 'used_prompt': getattr(task.prompt, 'name', None),
                                 'final_text': text,
                                 'language': getattr(task, 'language', 'auto'),
                             }
@@ -196,9 +200,9 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                 ai_meta = {
                     'model': 'user_provided',
                     'provider': 'user',
-                    'latency_ms': 0,
-                    'tokens': 0,
-                    'used_prompt': None,
+                    # 'latency_ms': 0,
+                    # 'tokens': 0,
+                    # 'used_prompt': None,
                     'final_text': text,
                     'language': getattr(task, 'language', 'auto'),
                 }
