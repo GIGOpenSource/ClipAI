@@ -8,12 +8,12 @@
 @description : 推特工具类
 """
 import time
-from http.client import responses
-
 from tweepy import Client
-from utils.utils import LoggingUtil
 
-logger = LoggingUtil()
+
+# from utils.utils import LoggingUtil
+#
+# logger = LoggingUtil()
 
 
 class TwitterUnit(object):
@@ -44,7 +44,7 @@ class TwitterUnit(object):
         """
         try:
             response = self.client.create_tweet(text=text)
-            logger.info(f"推文发布成功: {response}")
+            # logger.info(f"推文发布成功: {response}")
             try:
                 if hasattr(response, 'data') and response.data:
                     data = response.data
@@ -54,7 +54,7 @@ class TwitterUnit(object):
                 data = dict()
             return True, data
         except Exception as e:
-            logger.error(f"发布推文失败: {e}")
+            # logger.error(f"发布推文失败: {e}")
             return False, None
 
     def getTwitterData(self, tweet_id: str) -> tuple[bool, dict | None]:
@@ -63,7 +63,7 @@ class TwitterUnit(object):
         :param tweet_id:推文文章ID
         :return:
         """
-        logger.info(f"正在获取推文 {tweet_id} 的指标")
+        # logger.info(f"正在获取推文 {tweet_id} 的指标")
         response = self.client.get_tweet(id=tweet_id, expansions=['author_id'],
                                          tweet_fields=['public_metrics', 'created_at', 'context_annotations'],
                                          user_auth=True)
@@ -99,7 +99,7 @@ class TwitterUnit(object):
                 data = dict()
             return True, data
         except Exception as e:
-            logger.error(f"获取推文 {tweet_id} 指标数据失败: {e}")
+            # logger.error(f"获取推文 {tweet_id} 指标数据失败: {e}")
             return False, None
 
     def replyTwitterMessages(self, tweet_id: str, text: str) -> bool:
@@ -120,7 +120,7 @@ class TwitterUnit(object):
             else:
                 return False
         except Exception as e:
-            logger.error(f"回复指定推文{tweet_id} 失败: {e}")
+            # logger.error(f"回复指定推文{tweet_id} 失败: {e}")
             return False
 
 
@@ -130,4 +130,5 @@ if __name__ == '__main__':
     access_token = '1757141001687511040-ITIEcDJ5OSF1Jksnk4kSHMJALVX3L5'
     access_token_secret = 'ENxoQtZpI6gSEgEtu4Vdz7fDBNOXJ1zYv1YftZCdeGXEz'
     client = TwitterUnit(api_key, api_secret, access_token, access_token_secret)
-    client.sendTwitter("测试")
+    flags, data = client.sendTwitter("测试")
+    print(data)

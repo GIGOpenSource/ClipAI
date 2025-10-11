@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
 from accounts.permissions import IsOwnerOrAdmin
+from test.QWEN_test import client
 from utils.utils import logger
 from .models import SimpleTask, SimpleTaskRun
 from .serializers import SimpleTaskSerializer
@@ -176,9 +177,9 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
 
                         logger.info(f"为账号 {acc.id} 调用 chat_completion")
                         if cfg.provider == "openai":
-                            flag,text = cli.generateToOpenAI(messages=messages)
-                        if cfg.provider =="deepseek":
-                            flag,text = cli.generateToDeepSeek(messages=messages)
+                            flag, text = cli.generateToOpenAI(messages=messages)
+                        if cfg.provider == "deepseek":
+                            flag, text = cli.generateToDeepSeek(messages=messages)
                         if flag:
                             ai_meta = {
                                 'model': cfg.model,
@@ -237,30 +238,27 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             # 执行平台操作
             try:
                 if task.provider == 'twitter':
-                    # 官方库 Tweepy，使用 OAuth1.0a
-                    import tweepy
                     api_key = acc.api_key
                     api_secret = acc.api_secret
                     at = acc.get_access_token()
                     ats = acc.get_access_token_secret()
-                    client = tweepy.Client(
-                        consumer_key=api_key,
-                        consumer_secret=api_secret,
-                        access_token=at,
-                        access_token_secret=ats
-                    )
+                    client = TwitterUnit(api_key, api_secret, at, ats)
                     if task.type == 'post':
-                        resp = client.create_tweet(text=final_text)
+                        flag, resp = client.sendTwitter(text=final_text)
                         logger.info(f"推文发送成功响应: {resp}")
-                        tweet_id = None
-                        try:
-                            data = getattr(resp, 'data', None) or {}
-                            tweet_id = data.get('id') if isinstance(data, dict) else getattr(data, 'id', None)
-                        except Exception:
-                            tweet_id = None
-                        results.append(
-                            {'account_id': acc.id, 'status': 'ok', 'tweet_id': tweet_id, 'account_status': acc.status})
-                        ok_count += 1
+                        """
+                        {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
+                        """
+                        if flag:
+                            tweet_id = resp["id"]
+                            results.append(
+                                {'account_id': acc.id, 'status': 'ok', 'tweet_id': tweet_id,
+                                 'account_status': acc.status})
+                            ok_count += 1
+                        else:
+                            tweet_id = ""
+                            err_count += 1
+
                         try:
                             SimpleTaskRun.objects.create(
                                 task=task, owner_id=task.owner_id, provider='twitter', type=task.type,
@@ -268,36 +266,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                                 ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
                                 ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
                                 success=True, external_id=str(tweet_id or ''), error_code='', error_message='',
-                            )
-                        except Exception:
-                            pass
-                        try:
-                            record_success_run(owner_id=task.owner_id, provider='twitter', task_type=task.type,
-                                               started_date=timezone.now().date())
-                        except Exception:
-                            pass
-                    elif task.type == 'reply_comment':
-                        cid = (task.payload or {}).get('comment_id')
-                        if not cid:
-                            results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_comment_id'})
-                            continue
-                        resp = client.create_tweet(text=final_text, reply={'in_reply_to_tweet_id': cid})
-                        reply_id = None
-                        try:
-                            data = getattr(resp, 'data', None) or {}
-                            reply_id = data.get('id') if isinstance(data, dict) else getattr(data, 'id', None)
-                        except Exception:
-                            reply_id = None
-                        results.append(
-                            {'account_id': acc.id, 'status': 'ok', 'reply_id': reply_id, 'account_status': acc.status})
-                        ok_count += 1
-                        try:
-                            SimpleTaskRun.objects.create(
-                                task=task, owner_id=task.owner_id, provider='twitter', type=task.type,
-                                account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-                                ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-                                ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-                                success=True, external_id=str(reply_id or ''), error_code='', error_message='',
                             )
                         except Exception:
                             pass
