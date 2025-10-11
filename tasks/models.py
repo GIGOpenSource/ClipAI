@@ -3,6 +3,7 @@ from django.conf import settings
 from django.db import models
 from social.models import PoolAccount
 from prompts.models import PromptConfig
+from utils.utils import logger
 
 
 class SimpleTask(models.Model):
@@ -96,16 +97,14 @@ class Tweet(models.Model):
     """
     推文主表模型
     """
-    tweet_id = models.CharField(max_length=50, unique=True, verbose_name="推文ID")
+    article_id = models.CharField(max_length=50, unique=True, verbose_name="文章ID")
     platform = models.CharField(max_length=100, verbose_name="平台名")
-    # 统计数据
-    publish_count = models.IntegerField(default=0, verbose_name="发布数")
+    article_text = models.TextField(verbose_name="文章内容")
     impression_count = models.IntegerField(default=0, verbose_name="曝光量(浏览量)")
     comment_count = models.IntegerField(default=0, verbose_name="评论数")
     message_count = models.IntegerField(default=0, verbose_name="消息数(私信预留)")
     like_count = models.IntegerField(default=0, verbose_name="点赞数")
     click_count = models.IntegerField(default=0, verbose_name="点击量(前台预留)")
-    created_date = models.DateField(default=timezone.now, verbose_name="创建日期")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -124,15 +123,12 @@ class TweetComment(models.Model):
     """
     comment_id = models.CharField(max_length=50, unique=True, verbose_name="评论ID")
     tweet = models.ForeignKey(Tweet, on_delete=models.CASCADE, related_name='comments', verbose_name="推文")
-
     content = models.TextField(verbose_name="评论内容")
     commenter_id = models.CharField(max_length=50, verbose_name="评论人ID")
     commenter_nickname = models.CharField(max_length=100, verbose_name="评论人昵称")
-
     # 回复相关字段
     reply_to_id = models.CharField(max_length=50, blank=True, null=True, verbose_name="回复人ID")
     reply_to_nickname = models.CharField(max_length=100, blank=True, null=True, verbose_name="回复人昵称")
-
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
