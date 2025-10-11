@@ -8,6 +8,7 @@
 @description : 推特工具类
 """
 import time
+from datetime import datetime
 from math import trunc
 
 from tweepy import Client
@@ -180,6 +181,7 @@ def updateArticle(articleId: str, data: dict) -> tuple[bool, Article | None]:
         article.impression_count = data.get("pageViews", 0)
         article.comment_count = data.get("commentCount", 0)
         article.like_count = data.get("likeCount", 0)
+        article.updated_at = datetime.now()
         article.save()
         return True, article
     except Article.DoesNotExist:
