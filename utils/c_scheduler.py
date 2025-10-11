@@ -4,6 +4,12 @@ from tasks.models import TArticle as Article
 from social.models import PoolAccount
 from utils.twitterUnit import TwitterUnit
 
+class TimeoutError(Exception):
+    pass
+
+# 超时处理函数
+def timeout_handler(signum, frame):
+    raise TimeoutError("API调用超时")
 
 def collect_recent_articles_data():
     """
@@ -19,7 +25,7 @@ def collect_recent_articles_data():
 
     # 创建结果列表
     results = []
-  ##
+    #
     # 遍历文章数据
     for article_data in recent_articles:
         article_id = article_data['article_id']
@@ -37,34 +43,37 @@ def collect_recent_articles_data():
                 access_token=pool_account.access_token,
                 access_token_secret=pool_account.access_token_secret
             )
+            try:
+                # 调用getTwitterData方法获取推文详细数据
+                success, twitter_data = twitter_client.getTwitterData(article_id)
 
-            # 调用getTwitterData方法获取推文详细数据
-            success, twitter_data = twitter_client.getTwitterData(article_id)
-
-            if success and twitter_data:
-                # 存储结果
-                results.append({
-                    'article_id': article_id,
-                    'robot_id': robot_id,
-                    'twitter_data': twitter_data
-                })
-                # 这里可以更新数据库中的文章统计数据
-                update_article_stats(article_id, twitter_data)
-
-
-            else:
+                if success and twitter_data:
+                    # 存储结果
+                    results.append({
+                        'article_id': article_id,
+                        'robot_id': robot_id,
+                        'twitter_data': twitter_data
+                    })
+                    # 这里可以更新数据库中的文章统计数据
+                    update_article_stats(article_id, twitter_data)
+                else:
+                    continue
+            except TimeoutError:
+                print(f"处理article_id {article_id}超时，跳过")
                 continue
-
-
+            except Exception as e:
+                # 检查是否为速率限制错误
+                if "Rate limit exceeded" in str(e):
+                    print(f"遇到速率限制，跳过article_id {article_id}")
+                    continue
+            else:
+                print(f"处理article_id {article_id}成功")
         except PoolAccount.DoesNotExist:
-
             print(f"未找到robot_id为{robot_id}的账号信息")
             continue
         except Exception as e:
-
             print(f"处理article_id {article_id}时出错: {e}")
             continue
-
     return results
 
 
@@ -77,6 +86,7 @@ def update_article_stats(article_id, twitter_data):
         article.impression_count = twitter_data.get('pageViews', 0)
         article.comment_count = twitter_data.get('commentCount', 0)
         article.like_count = twitter_data.get('likeCount', 0)
+        article.updated_at = datetime.now()
 
         # 更新其他需要的字段
         article.save()
@@ -87,6 +97,6 @@ def update_article_stats(article_id, twitter_data):
         print(f"更新文章统计数据时出错: {e}")
 
 
-if __name__ == '__main__':
-    results = collect_recent_articles_data()
-    print(results)
+# if __name__ == '__main__':
+#     results = collect_recent_articles_data()
+#     print(results)

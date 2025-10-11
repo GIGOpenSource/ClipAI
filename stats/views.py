@@ -93,6 +93,12 @@ class OverviewView(APIView):
 
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
+from django.utils import timezone
+from datetime import timedelta
+
+# 修改 stats/views.py 中的 CollectArticalView 类
+from utils.c_scheduler import collect_recent_articles_data
+
 class CollectArticalView(APIView):
     """
     定时收集推文和评论数据的视图
@@ -113,8 +119,8 @@ class CollectArticalView(APIView):
         手动触发收集任务
         """
         try:
-            self._collect_artical_data(request.user.id)
-            return Response({'status': 'success', 'message': '数据收集完成'})
+            results = collect_recent_articles_data()
+            return Response({'status': 'success', 'message': '数据收集完成', 'results': results})
         except Exception as e:
             logger.error(f"收集推文数据失败: {e}")
             return Response({'status': 'error', 'message': str(e)})
@@ -141,11 +147,10 @@ class CollectArticalView(APIView):
                 pass  # 如果任务不存在则忽略
             # 添加新的定时任务
             scheduler.add_job(
-                func=self._collect_artical_data,
+                func=collect_recent_articles_data,
                 trigger=IntervalTrigger(hours=6),
                 id='collect_artical_data',
                 name='Collect Artical Data Every 6 Hours',
-                args=[request.user.id],
                 replace_existing=True,
             )
             return Response({
@@ -155,74 +160,3 @@ class CollectArticalView(APIView):
         except Exception as e:
             logger.error(f"设置定时任务失败: {e}")
             return Response({'status': 'error', 'message': str(e)})
-
-    def _collect_artical_data(self, user_id):
-        """
-        收集推文和评论数据的核心逻辑
-        """
-        # 获取用户拥有的所有机器人账号
-        robot_accounts = PoolAccount.objects.filter(
-            owner_id=user_id,
-            is_robot=True,
-            platform='twitter'  # 假设是Twitter平台
-        )
-
-        logger.info(f"找到 {robot_accounts.count()} 个机器人账号")
-
-        for account in robot_accounts:
-            try:
-                # 初始化Twitter客户端
-                twitter_client = TwitterUnit(
-                    api_key=account.api_key,
-                    api_secret=account.api_secret,
-                    access_token=account.access_token,
-                    access_token_secret=account.access_token_secret
-                )
-
-                # 这里需要根据业务逻辑获取该账号发布的推文ID列表
-                # 示例：假设有一个方法可以获取最近的推文ID
-                recent_articles = self._get_recent_articles_for_account(account)
-
-                for article_item in recent_articles:
-                    success, article_data = twitter_client.getTwitterData(article_item['article_id'])
-
-                    if success and article_data:
-                        with transaction.atomic():
-                            # 更新或创建推文记录
-                            article_obj, created = Article.objects.update_or_create(
-                                article_id=article_item['article_id'],
-                                platform='twitter',
-                                defaults={
-                                    'impression_count': article_data.get('pageViews', 0),
-                                    'comment_count': article_data.get('commentCount', 0),
-                                    'like_count': article_data.get('likeCount', 0),
-                                    'article_text': article_data.get('text', ''),
-                                    'created_at': article_data.get('createDate', timezone.now()),
-                                }
-                            )
-                            # 处理评论数据
-                            comments = article_data.get('comments', [])
-                            for comment_data in comments:
-                                ArticleComment.objects.update_or_create(
-                                    comment_id=comment_data['id'],
-                                    article=article_obj,
-                                    defaults={
-                                        'content': comment_data['text'],
-                                        'commenter_id': comment_data['author_id'],
-                                        'created_at': comment_data['created_at']
-                                    }
-                                )
-
-            except Exception as e:
-                logger.error(f"处理账号 {account.username} 时出错: {e}")
-                continue
-
-    def _get_recent_articles_for_account(self, account):
-        """
-        获取指定账号的近期推文列表（需要根据实际业务实现）
-        """
-        # 这是一个示例实现，你需要根据实际情况修改
-        # 可能从数据库中查询该账号已知的推文ID，或者通过API获取
-        return [
-            {'article_id': '1234567890'},  # 示例推文ID
-        ]

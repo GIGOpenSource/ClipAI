@@ -35,7 +35,7 @@ class TwitterUnit(object):
             consumer_secret=self.api_secret,
             access_token=self.access_token,
             access_token_secret=self.access_token_secret,
-            wait_on_rate_limit=True
+            wait_on_rate_limit=False
         )
 
     def sendTwitter(self, text: str, robotId: int) -> tuple[bool, dict | None]:
@@ -72,6 +72,14 @@ class TwitterUnit(object):
             response = self.client.get_tweet(id=tweet_id, expansions=['author_id'],
                                              tweet_fields=['public_metrics', 'created_at', 'context_annotations'],
                                              user_auth=True)
+            if hasattr(response, 'headers'):
+                remaining = response.headers.get('x-rate-limit-remaining')
+                reset_time = response.headers.get('x-rate-limit-reset')
+
+                # 如果剩余请求数很少，可以选择跳过
+                if remaining is not None and int(remaining) < 2:
+                    raise Exception("Rate limit exceeded")
+
             commentResponse = self.client.search_recent_tweets(
                 query=f"conversation_id:{tweet_id} is:reply",
                 tweet_fields=['author_id', 'conversation_id', 'created_at'],
