@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'prompts',
     'tasks',
     'stats',
+    'models'
 ]
 
 REST_FRAMEWORK = {
@@ -122,10 +123,10 @@ if POSTGRES_HOST:
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('POSTGRES_DB', 'clipai'),
-            'USER': os.getenv('POSTGRES_USER', 'clipai'),
-            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'clipai'),
-            'HOST': "192.168.77.222",
-            'PORT': os.getenv('POSTGRES_PORT', '5436'),
+            'USER': os.getenv('POSTGRES_USER', 'flashc'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'flashc'),
+            'HOST': "114.116.252.39",
+            'PORT': os.getenv('POSTGRES_PORT', '5432'),
         }
     }
 else:

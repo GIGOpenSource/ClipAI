@@ -113,6 +113,7 @@ class TwitterUnit(object):
                                    for item in
                                    comments]
                     data['comments'] = newComments
+                    print(f"获取推文 {tweet_id} 评论列表成功 内容\n：{newComments}")
                     createArticleComments(tweet_id, newComments)
                 else:
                     data['comments'] = []
