@@ -12,7 +12,7 @@ from django.utils import timezone
 from ai.models import AIConfig
 from social.models import PoolAccount
 from utils.largeModelUnit import LargeModelUnit
-from utils.twitterUnit import TwitterUnit
+from utils.twitterUnit import TwitterUnit, createTaskDetail
 
 
 @extend_schema_view(
@@ -243,7 +243,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     ats = acc.get_access_token_secret()
                     client = TwitterUnit(api_key, api_secret, at, ats)
                     if task.type == 'post':
-                        flag, resp = client.sendTwitter(final_text, int(acc.id), task,cfg,userId=self.request.user.id)
+                        flag, resp = client.sendTwitter(final_text, int(acc.id), task, cfg, userId=self.request.user.id)
                         logger.info(f"推文发送成功响应: {resp}")
                         """
                         {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
@@ -263,70 +263,70 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                                                started_date=timezone.now().date())
                         except Exception:
                             pass
-                elif task.provider == 'facebook':
-                    # 官方 Graph API（使用 requests 或 facebook-sdk；此处直接调用 Graph endpoint 简化）
-                    import requests
-                    page_token = acc.get_access_token()
-                    page_id = (task.payload or {}).get('page_id')
-                    if not page_token or not page_id:
-                        results.append(
-                            {'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_page_token_or_page_id'})
-                        continue
-                    base = 'https://graph.facebook.com/v19.0'
-                    if task.type == 'post':
-                        r = requests.post(f"{base}/{page_id}/feed",
-                                          data={'message': final_text, 'access_token': page_token}, timeout=20)
-                        r.raise_for_status()
-                        body = r.json()
-                        results.append(
-                            {'account_id': acc.id, 'status': 'ok', 'post': body, 'account_status': acc.status})
-                        ok_count += 1
-                        try:
-                            SimpleTaskRun.objects.create(
-                                task=task, owner_id=task.owner_id, provider='facebook', type='post',
-                                account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-                                ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-                                ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-                                success=True, external_id=str((body.get('id') if isinstance(body, dict) else '') or ''),
-                                error_code='', error_message='',
-                            )
-                        except Exception:
-                            pass
-                        try:
-                            record_success_run(owner_id=task.owner_id, provider='facebook', task_type='post',
-                                               started_date=timezone.now().date())
-                        except Exception:
-                            pass
-                    elif task.type == 'reply_comment':
-                        cid = (task.payload or {}).get('comment_id')
-                        if not cid:
-                            results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_comment_id'})
-                            continue
-                        r = requests.post(f"{base}/{cid}/comments",
-                                          data={'message': final_text, 'access_token': page_token}, timeout=20)
-                        r.raise_for_status()
-                        body = r.json()
-                        results.append(
-                            {'account_id': acc.id, 'status': 'ok', 'reply': body, 'account_status': acc.status})
-                        ok_count += 1
-                        try:
-                            SimpleTaskRun.objects.create(
-                                task=task, owner_id=task.owner_id, provider='facebook', type='reply_comment',
-                                account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-                                ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-                                ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-                                success=True, external_id=str((body.get('id') if isinstance(body, dict) else '') or ''),
-                                error_code='', error_message='',
-                            )
-                        except Exception:
-                            pass
-                        try:
-                            record_success_run(owner_id=task.owner_id, provider='facebook', task_type='reply_comment',
-                                               started_date=timezone.now().date())
-                        except Exception:
-                            pass
-                else:
-                    results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'unsupported_provider'})
+            #     elif task.provider == 'facebook':
+            #         # 官方 Graph API（使用 requests 或 facebook-sdk；此处直接调用 Graph endpoint 简化）
+            #         import requests
+            #         page_token = acc.get_access_token()
+            #         page_id = (task.payload or {}).get('page_id')
+            #         if not page_token or not page_id:
+            #             results.append(
+            #                 {'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_page_token_or_page_id'})
+            #             continue
+            #         base = 'https://graph.facebook.com/v19.0'
+            #         if task.type == 'post':
+            #             r = requests.post(f"{base}/{page_id}/feed",
+            #                               data={'message': final_text, 'access_token': page_token}, timeout=20)
+            #             r.raise_for_status()
+            #             body = r.json()
+            #             results.append(
+            #                 {'account_id': acc.id, 'status': 'ok', 'post': body, 'account_status': acc.status})
+            #             ok_count += 1
+            #             try:
+            #                 SimpleTaskRun.objects.create(
+            #                     task=task, owner_id=task.owner_id, provider='facebook', type='post',
+            #                     account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
+            #                     ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
+            #                     ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
+            #                     success=True, external_id=str((body.get('id') if isinstance(body, dict) else '') or ''),
+            #                     error_code='', error_message='',
+            #                 )
+            #             except Exception:
+            #                 pass
+            #             try:
+            #                 record_success_run(owner_id=task.owner_id, provider='facebook', task_type='post',
+            #                                    started_date=timezone.now().date())
+            #             except Exception:
+            #                 pass
+            #         elif task.type == 'reply_comment':
+            #             cid = (task.payload or {}).get('comment_id')
+            #             if not cid:
+            #                 results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_comment_id'})
+            #                 continue
+            #             r = requests.post(f"{base}/{cid}/comments",
+            #                               data={'message': final_text, 'access_token': page_token}, timeout=20)
+            #             r.raise_for_status()
+            #             body = r.json()
+            #             results.append(
+            #                 {'account_id': acc.id, 'status': 'ok', 'reply': body, 'account_status': acc.status})
+            #             ok_count += 1
+            #             try:
+            #                 SimpleTaskRun.objects.create(
+            #                     task=task, owner_id=task.owner_id, provider='facebook', type='reply_comment',
+            #                     account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
+            #                     ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
+            #                     ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
+            #                     success=True, external_id=str((body.get('id') if isinstance(body, dict) else '') or ''),
+            #                     error_code='', error_message='',
+            #                 )
+            #             except Exception:
+            #                 pass
+            #             try:
+            #                 record_success_run(owner_id=task.owner_id, provider='facebook', task_type='reply_comment',
+            #                                    started_date=timezone.now().date())
+            #             except Exception:
+            #                 pass
+            #     else:
+            #         results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'unsupported_provider'})
             except Exception as e:
                 code = _extract_status_code(e)
                 try:
@@ -336,16 +336,8 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                 results.append({'account_id': acc.id, 'status': 'error', 'error': str(e), 'code': code,
                                 'account_status': acc.status})
                 err_count += 1
-                try:
-                    SimpleTaskRun.objects.create(
-                        task=task, owner_id=task.owner_id, provider=task.provider, type=task.type,
-                        account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-                        ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-                        ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-                        success=False, external_id='', error_code=str(code or ''), error_message=str(e),
-                    )
-                except Exception:
-                    pass
+                createTaskDetail(task.provider, text=final_text, sendType=task.type, task=task, aiConfig=cfg,
+                                 status=False, errorMessage=e, userId=self.request.user.id, robotId=acc.id)
 
         # 运行完成：将仍为 active 的账号改回 inactive
         if selected_ids:
