@@ -67,6 +67,7 @@ class SummaryView(APIView):
             total_message_count=Sum('message_count'),
             total_like_count=Sum('like_count'),
             total_click_count=Sum('click_count'))
+        articleData = {item['platform']: {k: v for k, v in item.items() if k != 'platform'} for item in articleData}
         return Response(data=articleData)
 
 

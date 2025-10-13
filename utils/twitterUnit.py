@@ -12,7 +12,7 @@ from datetime import datetime
 from math import trunc
 
 from tweepy import Client
-from tasks.models import TArticle as Article
+from tasks.models import TArticle as Article, TArticleComments as ArticleComments
 from django.db import transaction
 
 
@@ -101,9 +101,19 @@ class TwitterUnit(object):
                 else:
                     data = dict()
                 if hasattr(commentResponse, 'data') and commentResponse.data:
-                    data['comments'] = [
-                        {"id": item.id, "text": item.text, "author_id": item.author_id, "created_at": item.created_at}
-                        for item in commentResponse.data]
+                    userList = [{"id": str(item.id), "name": item["data"]["name"], "username": item["data"]["username"]}
+                                for
+                                item in commentResponse.includes["users"]]
+                    comments = [{"id": str(item.id), "text": item.text, "author_id": item.author_id,
+                                 "created_at": item.created_at}
+                                for item in commentResponse.data]
+                    user_dict = {user['id']: user for user in userList}
+                    newComments = [{**item, 'name': user_dict.get(item['author_id'], {}).get('name', 'Unknown'),
+                                    'username': user_dict.get(item['author_id'], {}).get('username', 'unknown_user')}
+                                   for item in
+                                   comments]
+                    data['comments'] = newComments
+                    createArticleComments(tweet_id, newComments)
                 else:
                     data['comments'] = []
             except:
@@ -186,3 +196,31 @@ def updateArticle(articleId: str, data: dict) -> tuple[bool, Article | None]:
         return True, article
     except Article.DoesNotExist:
         return False, None
+
+
+@transaction.atomic
+def createArticleComments(articleId: str, data: list) -> bool:
+    """
+    更新文章评论
+    :param articleId: 文章ID
+    :param data: 获取到的文章数据 点赞量等
+    {'author_id': 1751080672184487936,
+     'created_at': datetime.datetime(2025, 10, 11, 9, 31, 5, tzinfo=datetime.timezone.utc),
+     'id': 1976943626854044122, 'name': 'Katharyn Jeanie',
+    'text': '@liangwater @AustinJuli67152 第二个人评论第二条帖子 的第一个人第一次',
+    'username': 'KatharynJe68272'}
+    """
+    try:
+        for item in data:
+            comment = ArticleComments.objects.create(
+                article_id=articleId,
+                comment_id=item.get("id"),
+                content=item.get("text"),
+                commenter_id=item.get("author_id"),
+                created_at=item.get("created_at"),
+                commenter_nickname=item.get("name")
+            )
+            comment.save()
+        return True
+    except:
+        return False
