@@ -8,7 +8,7 @@ import requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
 import tweepy
 from django.utils import timezone
 from django.http import HttpRequest
@@ -21,13 +21,14 @@ from .serializers import PoolAccountSerializer
 
 
 @extend_schema_view(
-    list=extend_schema(summary='账号池列表', tags=['账号池']),
-    retrieve=extend_schema(summary='账号池详情', tags=['账号池']),
-    create=extend_schema(summary='创建账号池账号', tags=['账号池']),
-    update=extend_schema(summary='更新账号池账号', tags=['账号池']),
-    partial_update=extend_schema(summary='部分更新账号池账号', tags=['账号池']),
-    destroy=extend_schema(summary='删除账号池账号', tags=['账号池'])
-)
+    list=extend_schema(summary='账号池列表',
+                       ),
+                       retrieve=extend_schema(summary='账号池详情', tags=['账号池']),
+                       create=extend_schema(summary='创建账号池账号', tags=['账号池']),
+                       update=extend_schema(summary='更新账号池账号', tags=['账号池']),
+                       partial_update=extend_schema(summary='部分更新账号池账号', tags=['账号池']),
+                       destroy=extend_schema(summary='删除账号池账号', tags=['账号池'])
+                       )
 class PoolAccountViewSet(viewsets.ModelViewSet):
     queryset = PoolAccount.objects.all().order_by('-updated_at')
     serializer_class = PoolAccountSerializer

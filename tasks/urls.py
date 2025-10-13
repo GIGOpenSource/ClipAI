@@ -7,6 +7,7 @@ from .views import SimpleTaskViewSet, TaskTagsView, GlobalTagsView
 router = DefaultRouter()
 router.register(r'simple', SimpleTaskViewSet)
 
+
 urlpatterns = [
     path('', include(router.urls)),
     path('tags/global/', GlobalTagsView.as_view(), name='all-tags'),

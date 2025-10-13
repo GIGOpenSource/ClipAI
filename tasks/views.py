@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
 from accounts.permissions import IsOwnerOrAdmin
 from utils.utils import logger
 from .models import SimpleTask, SimpleTaskRun
@@ -20,6 +20,20 @@ from utils.twitterUnit import TwitterUnit, createTaskDetail
     retrieve=extend_schema(summary='简单任务详情', tags=['任务执行（非定时）']),
     create=extend_schema(summary='创建简单任务（非定时）', tags=['任务执行（非定时）']),
     update=extend_schema(summary='更新简单任务', tags=['任务执行（非定时）']),
+    partial_update=extend_schema(summary='部分更新简单任务', tags=['任务执行（非定时）']),
+    destroy=extend_schema(summary='删除简单任务', tags=['任务执行（非定时）'])
+)
+class SimpleTaskRunViewSet(viewsets.ModelViewSet):
+    queryset = SimpleTaskRun.objects.all().order_by('-created_at')
+
+
+
+@extend_schema_view(
+    list=extend_schema(summary='简单任务列表', tags=['任务执行（非定时）']),
+    retrieve=extend_schema(summary='简单任务详情', tags=['任务执行（非定时）']),
+    create=extend_schema(summary='创建简单任务（非定时）', tags=['任务执行（非定时）']),
+    update=extend_schema(summary='更新简单任务', tags=['任务执行（非定时）'],
+                         parameters=[OpenApiParameter(name='selected', description='选中状态')]),
     partial_update=extend_schema(summary='部分更新简单任务', tags=['任务执行（非定时）']),
     destroy=extend_schema(summary='删除简单任务', tags=['任务执行（非定时）'])
 )
