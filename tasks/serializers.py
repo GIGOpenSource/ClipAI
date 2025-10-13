@@ -160,3 +160,9 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                 obj.selected_accounts.clear()
 
         return obj
+
+class SimpleTaskRunSerializer(serializers.ModelSerializer):
+    api_secret = serializers.CharField(required=False, allow_blank=True)
+    class Meta:
+        model = PoolAccount
+        fields =  '__all__'
