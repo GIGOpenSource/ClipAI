@@ -9,11 +9,14 @@
 """
 import time
 from datetime import datetime
+from imghdr import tests
 from math import trunc
 
 from tweepy import Client
 from tasks.models import TArticle as Article, TArticleComments as ArticleComments
+from models.models import TasksSimpletaskrun, TasksSimpletask, AiAiconfig, PromptsPromptconfig
 from django.db import transaction
+from utils.utils import logger
 
 
 class TwitterUnit(object):
@@ -36,28 +39,37 @@ class TwitterUnit(object):
             wait_on_rate_limit=False
         )
 
-    def sendTwitter(self, text: str, robotId: int) -> tuple[bool, dict | None]:
+    def sendTwitter(self, text: str, robotId: int, task: TasksSimpletask, aiConfig: AiAiconfig, userId: int) -> tuple[
+        bool, dict | None | str]:
         """
         发布推文
         :param text: 待发送推文消息体
         :param robotId: 机器人ID
+        :param task: 任务对象
+        :param aiConfig: AI配置
+        :param userId: 当前人
         :return:
         """
         try:
             response = self.client.create_tweet(text=text)
-            # logger.info(f"推文发布成功: {response}")
+            logger.info(f"推文发布成功: {response}")
             try:
                 if hasattr(response, 'data') and response.data:
                     data = response.data
                     createArticle("x", data, robotId)
+                    createTaskDetail("x", text=text, sendType="post", task=task, aiConfig=aiConfig, status=True,
+                                     errorMessage=None,
+                                     articleId=data.id, userId=userId, robotId=robotId, )
                 else:
                     data = dict()
             except:
                 data = dict()
             return True, data
         except Exception as e:
-            # logger.error(f"发布推文失败: {e}")
-            return False, None
+            createTaskDetail("x", text=text, sendType="post", task=task, aiConfig=aiConfig, status=False,
+                             errorMessage=str(e), articleId=None, userId=userId, robotId=robotId, )
+            logger.error(f"发布推文失败: {e}")
+            return False, str(e)
 
     def getTwitterData(self, tweet_id: str) -> tuple[bool, dict | None]:
         """
@@ -66,7 +78,7 @@ class TwitterUnit(object):
         :return:
         """
         try:
-            # logger.info(f"正在获取推文 {tweet_id} 的指标")
+            logger.info(f"正在获取推文 {tweet_id} 的指标")
             response = self.client.get_tweet(id=tweet_id, expansions=['author_id'],
                                              tweet_fields=['public_metrics', 'created_at', 'context_annotations'],
                                              user_auth=True)
@@ -121,7 +133,7 @@ class TwitterUnit(object):
                 data = dict()
             return True, data
         except Exception as e:
-            # logger.error(f"获取推文 {tweet_id} 指标数据失败: {e}")
+            logger.error(f"获取推文 {tweet_id} 指标数据失败: {e}")
             return False, None
 
     def replyTwitterMessages(self, tweet_id: str, text: str) -> bool:
@@ -142,7 +154,7 @@ class TwitterUnit(object):
             else:
                 return False
         except Exception as e:
-            # logger.error(f"回复指定推文{tweet_id} 失败: {e}")
+            logger.error(f"回复指定推文{tweet_id} 失败: {e}")
             return False
 
 
@@ -224,4 +236,50 @@ def createArticleComments(articleId: str, data: list) -> bool:
             comment.save()
         return True
     except:
+        return False
+
+
+@transaction.atomic
+def createTaskDetail(platform: str, text: str, sendType: str, task: TasksSimpletask, aiConfig: AiAiconfig, status: bool,
+                     errorMessage: str | None, articleId: str | None, userId: int, robotId: int) -> bool:
+    """
+    创建任务详情
+    :param platform: 平台
+    :param text: 发送消息
+    :param sendType 发送类型  post->发送文章, reply_comment-> 回复
+    :param task:任务
+    :param aiConfig:爱配置
+    :param status:发送状态
+    :param errorMessage :错误消息
+    :param articleId :文章ID
+    :param userId
+    :param robotId
+    :return:
+    """
+    try:
+        used_prompt = PromptsPromptconfig.objects.get(id=task.prompt_id).name
+        createData = TasksSimpletaskrun.objects.create(
+            provider=platform,
+            type=sendType,
+            text=text,
+            used_prompt=used_prompt,
+            ai_model=aiConfig.model,
+            ai_provider=aiConfig.provider,
+            created_at=datetime.now(),
+            task_id=task.id,
+            owner_id=userId,
+            account_id=robotId,
+            success=status
+        )
+        if status:
+            createData.external_id = articleId
+        else:
+            try:
+                error_code = str(errorMessage).split()[0]
+            except:
+                error_code = ''
+            createData.error_code = error_code
+            createData.error_message = errorMessage
+        createData.save()
+    except Exception as e:
         return False

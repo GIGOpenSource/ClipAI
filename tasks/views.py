@@ -243,7 +243,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     ats = acc.get_access_token_secret()
                     client = TwitterUnit(api_key, api_secret, at, ats)
                     if task.type == 'post':
-                        flag, resp = client.sendTwitter(final_text, int(acc.id))
+                        flag, resp = client.sendTwitter(final_text, int(acc.id), task,cfg,userId=self.request.user.id)
                         logger.info(f"推文发送成功响应: {resp}")
                         """
                         {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
@@ -258,16 +258,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                             tweet_id = ""
                             err_count += 1
 
-                        try:
-                            SimpleTaskRun.objects.create(
-                                task=task, owner_id=task.owner_id, provider='twitter', type=task.type,
-                                account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-                                ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-                                ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-                                success=True, external_id=str(tweet_id or ''), error_code='', error_message='',
-                            )
-                        except Exception:
-                            pass
                         try:
                             record_success_run(owner_id=task.owner_id, provider='twitter', task_type=task.type,
                                                started_date=timezone.now().date())
