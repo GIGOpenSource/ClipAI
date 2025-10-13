@@ -337,7 +337,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                                 'account_status': acc.status})
                 err_count += 1
                 createTaskDetail(task.provider, text=final_text, sendType=task.type, task=task, aiConfig=cfg,
-                                 status=False, errorMessage=e, userId=self.request.user.id, robotId=acc.id)
+                                 status=False, errorMessage=str(e), userId=self.request.user.id, robotId=acc.id,articleId=None)
 
         # 运行完成：将仍为 active 的账号改回 inactive
         if selected_ids:

@@ -56,8 +56,8 @@ class TwitterUnit(object):
             try:
                 if hasattr(response, 'data') and response.data:
                     data = response.data
-                    createArticle("x", data, robotId)
-                    createTaskDetail("x", text=text, sendType="post", task=task, aiConfig=aiConfig, status=True,
+                    createArticle("twitter", data, robotId)
+                    createTaskDetail("twitter", text=text, sendType="post", task=task, aiConfig=aiConfig, status=True,
                                      errorMessage=None, articleId=data.id, userId=userId, robotId=robotId, )
                 else:
                     data = dict()
@@ -65,7 +65,7 @@ class TwitterUnit(object):
                 data = dict()
             return True, data
         except Exception as e:
-            createTaskDetail("x", text=text, sendType="post", task=task, aiConfig=aiConfig, status=False,
+            createTaskDetail("twitter", text=text, sendType="post", task=task, aiConfig=aiConfig, status=False,
                              errorMessage=str(e), articleId=None, userId=userId, robotId=robotId, )
             logger.error(f"发布推文失败: {e}")
             return False, str(e)
