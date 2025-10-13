@@ -58,8 +58,7 @@ class TwitterUnit(object):
                     data = response.data
                     createArticle("x", data, robotId)
                     createTaskDetail("x", text=text, sendType="post", task=task, aiConfig=aiConfig, status=True,
-                                     errorMessage=None,
-                                     articleId=data.id, userId=userId, robotId=robotId, )
+                                     errorMessage=None, articleId=data.id, userId=userId, robotId=robotId, )
                 else:
                     data = dict()
             except:
