@@ -17,7 +17,7 @@ def record_success_run(owner_id: int | None, provider: str, task_type: str, star
     defaults = {
         'account_count': 0,
         'ins': 0,
-        'x': 0,
+        'twitter': 0,
         'fb': 0,
         'post_count': 0,
         'reply_comment_count': 0,
@@ -36,7 +36,7 @@ def record_success_run(owner_id: int | None, provider: str, task_type: str, star
     if prov == 'instagram':
         updates['ins'] = F('ins') + 1
     elif prov == 'twitter':
-        updates['x'] = F('x') + 1
+        updates['twitter'] = F('twitter') + 1
     elif prov == 'facebook':
         updates['fb'] = F('fb') + 1
 
