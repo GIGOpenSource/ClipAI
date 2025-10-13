@@ -1,4 +1,4 @@
-from django.db.models import Sum
+from django.db.models import Sum, Count
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -17,6 +17,8 @@ from .models import DailyStat
 from .serializers import SummaryResponseSerializer
 from tasks.models import TArticle
 from social.models import PoolAccount
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
 # 全局调度器实例和锁
 _scheduler_instance = None
@@ -39,41 +41,173 @@ def get_global_scheduler():
 
 class SummaryView(APIView):
     permission_classes = [IsAuthenticated]
-
-    @extend_schema(summary='统计概览（仅昨天当前用户）', tags=['数据统计'], responses=SummaryResponseSerializer)
+    @extend_schema(
+        summary='统计概览（大于等于日期数据）',
+        tags=['数据统计'],
+        responses=SummaryResponseSerializer,
+        parameters=[
+            OpenApiParameter(
+                name='start_date',
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description='开始日期 (格式: YYYY-MM-DD)，返回大于等于该日期的数据,不带日期是总数',
+                required=False
+            ),
+            OpenApiParameter(
+                name='end_date',
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description='结束日期 (格式: YYYY-MM-DD)，返回小于等于该日期的数据',
+                required=False
+            )
+        ]
+    )
     def get(self, request):
-        # if not (request.user and request.user.is_authenticated):
-        #     return Response({'total_runs': 0, 'succeeded': 0, 'failed': 0, 'success_rate': 0, 'avg_duration_ms': 0, 'sla_met_rate': None})
-        # yesterday = timezone.now().date() - timedelta(days=1)
-        # stat = DailyStat.objects.filter(date=yesterday, owner_id=request.user.id).first()
-        # post = getattr(stat, 'post_count', 0) if stat else 0
-        # r_c = getattr(stat, 'reply_comment_count', 0) if stat else 0
-        # r_m = getattr(stat, 'reply_message_count', 0) if stat else 0
-        # total = int(post) + int(r_c) + int(r_m)
-        # return Response({
-        #     'total_runs': total,
-        #     'succeeded': total,
-        #     'failed': 0,
-        #     'success_rate': 1 if total else 0,
-        #     'avg_duration_ms': 0,
-        #     'sla_met_rate': None,
-        # })
+        userId = request.user.id
+
+        # if userId
+        robotList = PoolAccount.objects.filter(owner_id=userId).values('id')
+        robotList = [robot["id"] for robot in robotList]
+        # 获取查询参数中的开始日期
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        # 构建查询集
+        article_query = TArticle.objects.filter(robot_id__in=robotList)
+        from datetime import datetime
+        # 如果提供了开始日期，则过滤大于等于该日期的数据
+        if start_date:
+            try:
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                article_query = article_query.filter(created_at__date__gte=start_date_obj)
+            except ValueError:
+                return Response({'error': '日期格式错误，请使用 YYYY-MM-DD 格式'}, status=400)
+        if end_date:
+            try:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                article_query = article_query.filter(created_at__date__lte=end_date_obj)
+            except ValueError:
+                return Response({'error': '结束日期格式错误，请使用 YYYY-MM-DD 格式'}, status=400)
+
+        # 如果传了日期，按平台分组返回数据
+        if start_date or end_date:
+            articleData = article_query.values('platform').annotate(
+                total_impression_count=Sum('impression_count'),
+                total_comment_count=Sum('comment_count'),
+                total_message_count=Sum('message_count'),
+                total_like_count=Sum('like_count'),
+                total_click_count=Sum('click_count'),
+                total_public_count = Count('id')
+            )
+            articleData = {item['platform']: {k: v for k, v in item.items() if k != 'platform'} for item in articleData}
+            return Response(data=articleData)
+        else:
+            # 如果未传日期，按平台分组计算所有数据的总和
+            articleData = article_query.values('platform').annotate(
+                total_impression_count=Sum('impression_count'),
+                total_comment_count=Sum('comment_count'),
+                total_message_count=Sum('message_count'),
+                total_like_count=Sum('like_count'),
+                total_click_count=Sum('click_count'),
+                total_public_count=Count('id')
+            )
+
+            result = {}
+            for item in articleData:
+                platform = item['platform']
+                platform_data = {k: v if v is not None else 0 for k, v in item.items() if k != 'platform'}
+
+                # 计算各种率
+                total_posts = platform_data['total_public_count']
+                if total_posts > 0:
+                    # 点赞率 曝光率
+                    platform_data['exposure_rate'] = round(platform_data['total_impression_count'] / total_posts, 4)
+                    platform_data['like_rate'] = round(platform_data['total_like_count'] / total_posts, 4)
+                else:
+                    platform_data['exposure_rate'] = 0
+                    platform_data['like_rate'] = 0
+
+                total_impressions = platform_data['total_impression_count']
+                if total_impressions > 0:
+                    platform_data['click_rate'] = round(platform_data['total_click_count'] / total_impressions, 4)
+                else:
+                    platform_data['click_rate'] = 0
+                result[platform] = platform_data
+            return Response(data=result)
+
+class DetailView(APIView):
+    permission_classes = [IsAuthenticated]
+    @extend_schema(
+        summary='统计数据详情',
+        tags=['数据统计'],
+        responses=OpenApiTypes.OBJECT,
+        parameters=[
+            OpenApiParameter(
+                name='platform',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='平台名称 x ins fb',
+                required=True
+            ),
+            OpenApiParameter(
+                name='start_date',
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description='开始日期 (格式: YYYY-MM-DD)',
+                required=False
+            ),
+            OpenApiParameter(
+                name='end_date',
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description='结束日期 (格式: YYYY-MM-DD)',
+                required=False
+            )
+        ]
+    )
+    def get(self, request):
         userId = request.user
         robotList = PoolAccount.objects.filter(owner_id=userId).values('id')
         robotList = [robot["id"] for robot in robotList]
-        articleData = TArticle.objects.filter(robot_id__in=robotList).values('platform').annotate(
-            total_impression_count=Sum('impression_count'),
-            total_comment_count=Sum('comment_count'),
-            total_message_count=Sum('message_count'),
-            total_like_count=Sum('like_count'),
-            total_click_count=Sum('click_count'))
-        articleData = {item['platform']: {k: v for k, v in item.items() if k != 'platform'} for item in articleData}
-        return Response(data=articleData)
-
+        # 获取查询参数
+        platform = request.query_params.get('platform')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if not platform:
+            return Response({'error': 'platform参数是必需的'}, status=400)
+        # 构建查询集
+        article_query = TArticle.objects.filter(
+            robot_id__in=robotList,
+            platform=platform
+        )
+        # 处理开始日期
+        if start_date:
+            try:
+                from datetime import datetime
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                article_query = article_query.filter(created_at__date__gte=start_date_obj)
+            except ValueError:
+                return Response({'error': '开始日期格式错误，请使用 YYYY-MM-DD 格式'}, status=400)
+        # 处理结束日期
+        if end_date:
+            try:
+                from datetime import datetime
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                article_query = article_query.filter(created_at__date__lte=end_date_obj)
+            except ValueError:
+                return Response({'error': '结束日期格式错误，请使用 YYYY-MM-DD 格式'}, status=400)
+        # 查询详细数据
+        detail_data = article_query.values(
+            'created_at',
+            'impression_count',
+            'comment_count',
+            'message_count',
+            'like_count',
+            'click_count'
+        ).order_by('-created_at')
+        return Response(data=list(detail_data))
 
 class OverviewView(APIView):
     permission_classes = [IsAuthenticated]
-
     @extend_schema(summary='昨日统计明细（当前用户，单日一行）', tags=['数据统计'])
     def get(self, request):
         if not (request.user and request.user.is_authenticated):
@@ -100,6 +234,8 @@ class OverviewView(APIView):
         return Response(data)
 
 
+
+
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
 from django.utils import timezone
@@ -114,7 +250,6 @@ class CollectArticalView(APIView):
     定时收集推文和评论数据的视图
     """
     permission_classes = [IsAuthenticated]
-
     @extend_schema(
         summary='手动触发推文数据收集',
         description='立即执行一次推文和评论数据的收集任务',
