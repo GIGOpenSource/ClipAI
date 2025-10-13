@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from urllib3 import request
-
+from django.db.models import Q
 from .models import SimpleTask
 from social.models import PoolAccount
 from prompts.models import PromptConfig
+from models.models import SocialPoolaccount
 
 
 class SimpleTaskSerializer(serializers.ModelSerializer):
@@ -12,25 +13,31 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     class SelectedAccountSerializer(serializers.ModelSerializer):
         class Meta:
             model = PoolAccount
-            fields = ['id','name']
+            fields = ['id', 'name']
+
         def to_internal_value(self, data):
             result = super().to_internal_value(data)
             # 确保 id 字段不丢失
             if isinstance(data, dict) and 'id' in data:
                 result['id'] = data['id']
             return result
+
     # selected_accounts = serializers.PrimaryKeyRelatedField(queryset=PoolAccount.objects.all(), many=True, required=False)
     selected_accounts = SelectedAccountSerializer(many=True, required=False)
     prompt = serializers.PrimaryKeyRelatedField(queryset=PromptConfig.objects.all(), required=False, allow_null=True)
     # mentions = serializers.CharField(required=False, allow_blank=True)
     # tags = serializers.CharField(required=False, allow_blank=True)
     task_remark = serializers.CharField(required=False, allow_blank=True)
-
+    selectStatus = serializers.BooleanField(required=False, default=None)
     prompt_name = serializers.SerializerMethodField()
     # 人性化输入字段（后端会映射到 payload）
-    twitter_reply_to_tweet_id = serializers.CharField(write_only=True, required=False, allow_blank=True, help_text='Twitter 回复的推文 ID（仅当 type=reply_comment 且 provider=twitter）')
-    facebook_page_id = serializers.CharField(write_only=True, required=False, allow_blank=True, help_text='Facebook 发帖 Page ID（仅当 type=post 且 provider=facebook）')
-    facebook_comment_id = serializers.CharField(write_only=True, required=False, allow_blank=True, help_text='Facebook 回复的评论 ID（仅当 type=reply_comment 且 provider=facebook）')
+    twitter_reply_to_tweet_id = serializers.CharField(write_only=True, required=False, allow_blank=True,
+                                                      help_text='Twitter 回复的推文 ID（仅当 type=reply_comment 且 provider=twitter）')
+    facebook_page_id = serializers.CharField(write_only=True, required=False, allow_blank=True,
+                                             help_text='Facebook 发帖 Page ID（仅当 type=post 且 provider=facebook）')
+    facebook_comment_id = serializers.CharField(write_only=True, required=False, allow_blank=True,
+                                                help_text='Facebook 回复的评论 ID（仅当 type=reply_comment 且 provider=facebook）')
+
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
         if obj.prompt:
@@ -40,14 +47,16 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = SimpleTask
         fields = [
-            'id', 'owner', 'type', 'provider', 'language', 'text', 'mentions', 'tags', 'payload', 'selected_accounts', 'prompt','prompt_name',
+            'id', 'owner', 'type', 'provider', 'language', 'text', 'mentions', 'tags', 'payload', 'selected_accounts',
+            'prompt', 'prompt_name',
             # 人性化输入字段（write-only）
-            'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id','last_run_at',
+            'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
-            'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text','task_remark',
-            'created_at', 'updated_at'
+            'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
+            'created_at', 'selectStatus'
         ]
-        read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'created_at', 'updated_at']
+        read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
+                            'created_at', 'updated_at']
 
     def validate(self, attrs):
         # 无条件移除只写字段，确保它们不会传递给模型
@@ -73,7 +82,12 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('type 仅支持 post/reply_comment')
 
         # 人性化字段校验并写回 payload
-        payload = dict(attrs.get('payload') or {})
+        payload = attrs.get('payload')
+        if payload is None:
+            payload = {}
+        elif not isinstance(payload, dict):
+            # 如果 payload 不是字典类型，初始化为空字典
+            payload = {}
         if provider == 'twitter' and task_type == 'reply_comment':
             tw_reply = attrs.pop('twitter_reply_to_tweet_id', None) or payload.get('comment_id')
             if not tw_reply:
@@ -121,15 +135,28 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             # 设置多对多关系
             obj.selected_accounts.set(account_objects)
         return obj
-    # def update(self, instance, validated_data):
-    #     accounts = validated_data.pop('selected_accounts', None)
-    #     obj = super().update(instance, validated_data)
-    #     if accounts is not None:
-    #         obj.selected_accounts.set(accounts)
-    #     return obj
 
     def update(self, instance, validated_data):
+        isSuper = validated_data["owner"].is_superuser
+        if isSuper:
+            datas = SocialPoolaccount.objects.filter(status="active").values('id', 'name')
+        else:
+            ownerId = validated_data["owner"].id
+            datas = SocialPoolaccount.objects.filter(owner_id=ownerId, provider=validated_data["provider"],
+                                                     status="active").values('id', 'name')
         accounts_data = validated_data.pop('selected_accounts', None)
+        selectStatus = validated_data.pop('selectStatus', None)
+        accounts_list = [item["id"] for item in accounts_data]
+        if selectStatus is True:
+            if len(accounts_list) != 0:
+                print("全选,List有数据")
+                datas = datas.filter(Q(id__in=accounts_list))
+            print("全选,List无数据")
+            accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
+        if selectStatus is False:
+            print("反选,List有数据")
+            datas = datas.filter(~Q(id__in=accounts_list))
+            accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
         obj = super().update(instance, validated_data)
 
         # 正确处理 selected_accounts 关联
@@ -161,8 +188,10 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
         return obj
 
+
 class SimpleTaskRunSerializer(serializers.ModelSerializer):
     api_secret = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = PoolAccount
-        fields =  '__all__'
+        fields = '__all__'

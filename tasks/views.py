@@ -27,13 +27,13 @@ class SimpleTaskRunViewSet(viewsets.ModelViewSet):
     queryset = SimpleTaskRun.objects.all().order_by('-created_at')
 
 
-
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表', tags=['任务执行（非定时）']),
     retrieve=extend_schema(summary='简单任务详情', tags=['任务执行（非定时）']),
     create=extend_schema(summary='创建简单任务（非定时）', tags=['任务执行（非定时）']),
     update=extend_schema(summary='更新简单任务', tags=['任务执行（非定时）'],
-                         parameters=[OpenApiParameter(name='selected', description='选中状态')]),
+                         parameters=[OpenApiParameter(name='selected', description='选中状态'),
+                                     OpenApiParameter(name='selectedList', description='选中账号ID列表')]),
     partial_update=extend_schema(summary='部分更新简单任务', tags=['任务执行（非定时）']),
     destroy=extend_schema(summary='删除简单任务', tags=['任务执行（非定时）'])
 )
@@ -351,7 +351,8 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                                 'account_status': acc.status})
                 err_count += 1
                 createTaskDetail(task.provider, text=final_text, sendType=task.type, task=task, aiConfig=cfg,
-                                 status=False, errorMessage=str(e), userId=self.request.user.id, robotId=acc.id,articleId=None)
+                                 status=False, errorMessage=str(e), userId=self.request.user.id, robotId=acc.id,
+                                 articleId=None)
 
         # 运行完成：将仍为 active 的账号改回 inactive
         if selected_ids:
