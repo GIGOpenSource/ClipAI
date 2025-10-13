@@ -55,7 +55,7 @@ def collect_recent_articles_data():
                         'twitter_data': twitter_data
                     })
                     # 这里可以更新数据库中的文章统计数据
-                    update_article_stats(article_id, twitter_data)
+                    # update_article_stats(article_id, twitter_data)
                 else:
                     continue
             except TimeoutError:
@@ -75,28 +75,3 @@ def collect_recent_articles_data():
             print(f"处理article_id {article_id}时出错: {e}")
             continue
     return results
-
-
-def update_article_stats(article_id, twitter_data):
-    """
-    更新文章统计数据
-    """
-    try:
-        article = Article.objects.get(article_id=article_id)
-        article.impression_count = twitter_data.get('pageViews', 0)
-        article.comment_count = twitter_data.get('commentCount', 0)
-        article.like_count = twitter_data.get('likeCount', 0)
-        article.updated_at = datetime.now()
-
-        # 更新其他需要的字段
-        article.save()
-
-    except Article.DoesNotExist:
-        print(f"未找到article_id为{article_id}的文章")
-    except Exception as e:
-        print(f"更新文章统计数据时出错: {e}")
-
-
-# if __name__ == '__main__':
-#     results = collect_recent_articles_data()
-#     print(results)
