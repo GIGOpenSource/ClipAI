@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'prompts',
     'tasks',
     'stats',
+    'models'
 ]
 
 REST_FRAMEWORK = {
