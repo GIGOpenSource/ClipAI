@@ -128,7 +128,6 @@ class SummaryView(APIView):
                 total_click_count=Sum('click_count'),
                 total_public_count=Count('id')
             )
-
             result = {}
             for item in articleData:
                 platform = item['platform']
@@ -143,7 +142,6 @@ class SummaryView(APIView):
                 else:
                     platform_data['exposure_rate'] = 0
                     platform_data['like_rate'] = 0
-
                 total_impressions = platform_data['total_impression_count']
                 if total_impressions > 0:
                     platform_data['click_rate'] = round(platform_data['total_click_count'] / total_impressions, 4)
@@ -151,6 +149,7 @@ class SummaryView(APIView):
                     platform_data['click_rate'] = 0
                 result[platform] = platform_data
             return ApiResponse(data=result)
+from django.db.models.functions import TruncDate
 
 class DetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -179,7 +178,14 @@ class DetailView(APIView):
                 location=OpenApiParameter.QUERY,
                 description='企业用户ID，仅超级管理员可使用此参数查询指定企业的数据',
                 required=False
-            )
+            ),
+            OpenApiParameter(
+                name='end_date',
+                type=OpenApiTypes.DATE,
+                location=OpenApiParameter.QUERY,
+                description='结束日期 (格式: YYYY-MM-DD)',
+                required=False
+            ),
         ]
     )
     def get(self, request):
@@ -205,10 +211,10 @@ class DetailView(APIView):
             robot_id__in=robotList,
             platform=platform
         )
+        from datetime import datetime
         # 处理开始日期
         if start_date:
             try:
-                from datetime import datetime
                 start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
                 article_query = article_query.filter(created_at__date__gte=start_date_obj)
             except ValueError:
@@ -216,21 +222,51 @@ class DetailView(APIView):
         # 处理结束日期
         if end_date:
             try:
-                from datetime import datetime
                 end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
                 article_query = article_query.filter(created_at__date__lte=end_date_obj)
             except ValueError:
                 return ApiResponse(message=f'结束日期格式错误，请使用 YYYY-MM-DD 格式', status=400)
         # 查询详细数据
-        detail_data = article_query.values(
-            'created_at',
-            'impression_count',
-            'comment_count',
-            'message_count',
-            'like_count',
-            'click_count'
-        ).order_by('-created_at')
-        return ApiResponse(data=list(detail_data))
+        detail_data = article_query.annotate(
+            created_date=TruncDate('created_at')
+        ).values('created_date').annotate(
+            total_public_count=Count('id'),
+            total_impression_count=Sum('impression_count'),
+            total_comment_count=Sum('comment_count'),
+            total_message_count=Sum('message_count'),
+            total_like_count=Sum('like_count'),
+            total_click_count=Sum('click_count')
+        ).order_by('-created_date')
+
+        result_data = list(detail_data)
+        if start_date_obj and end_date_obj:
+            # 生成日期范围内的所有日期
+            date_range = []
+            current_date = start_date_obj
+            while current_date <= end_date_obj:
+                date_range.append(current_date)
+                current_date += timedelta(days=1)
+
+            # 获取已有数据的日期
+            existing_dates = {item['created_date'] for item in result_data}
+
+            # 为缺失的日期添加默认值
+            for date in date_range:
+                if date not in existing_dates:
+                    result_data.append({
+                        'created_date': date,
+                        'total_public_count': 0,
+                        'total_impression_count': 0,
+                        'total_comment_count': 0,
+                        'total_message_count': 0,
+                        'total_like_count': 0,
+                        'total_click_count': 0
+                    })
+            # 重新按日期排序
+            result_data.sort(key=lambda x: x['created_date'], reverse=True)
+
+        # return ApiResponse(data=list(detail_data))
+        return ApiResponse(data=result_data)
 
 class OverviewView(APIView):
     permission_classes = [IsAuthenticated]
