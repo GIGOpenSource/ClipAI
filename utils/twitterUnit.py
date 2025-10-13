@@ -123,7 +123,7 @@ class TwitterUnit(object):
                                     'username': user_dict.get(item['author_id'], {}).get('username', 'unknown_user')}
                                    for item in comments]
                     data['comments'] = newComments
-                    print(f"获取推文 {tweet_id} 评论列表成功 内容\n：{newComments}")
+                    logger.info(f"获取推文 {tweet_id} 评论列表成功 内容\n：{newComments}")
                     createArticleComments(tweet_id, newComments)
                 else:
                     data['comments'] = []

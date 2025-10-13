@@ -31,7 +31,7 @@ from .serializers import PoolAccountSerializer
 class PoolAccountViewSet(viewsets.ModelViewSet):
     queryset = PoolAccount.objects.all().order_by('-updated_at')
     serializer_class = PoolAccountSerializer
-    permission_classes = [IsAuthenticated, IsStaffUser] # 用户权限
+    permission_classes = [IsAuthenticated, IsStaffUser]  # 用户权限
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -73,6 +73,7 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
             serializer.save(owner=user)
         else:
             serializer.save()
+
 
 # ---- OAuth for PoolAccount (Twitter OAuth1.0a and Facebook OAuth2 minimal) ----
 
@@ -151,8 +152,9 @@ class PoolAccountFacebookOAuthStart(APIView):
             return Response({'detail': '缺少 app_id/client_id 或 app_secret/client_secret'}, status=400)
         redirect_uri = request.build_absolute_uri('/api/social/oauth/pool/facebook/callback/')
         state = secrets.token_urlsafe(16)
-        cache.set(f'pool:fb:{state}', {'app_id': app_id, 'app_secret': app_secret, 'redirect_uri': redirect_uri, 'api_version': api_version}, timeout=900)
-        auth_url = f'https://www.facebook.com/{api_version}/dialog/oauth?'+ urllib.parse.urlencode({
+        cache.set(f'pool:fb:{state}', {'app_id': app_id, 'app_secret': app_secret, 'redirect_uri': redirect_uri,
+                                       'api_version': api_version}, timeout=900)
+        auth_url = f'https://www.facebook.com/{api_version}/dialog/oauth?' + urllib.parse.urlencode({
             'client_id': app_id,
             'redirect_uri': redirect_uri,
             'state': state,
@@ -188,7 +190,8 @@ class PoolAccountFacebookOAuthCallback(APIView):
             tr.raise_for_status()
             tk = tr.json()
         except requests.RequestException as e:
-            return Response({'detail': 'token 交换失败', 'error': str(e), 'body': getattr(e.response, 'text', '')}, status=400)
+            return Response({'detail': 'token 交换失败', 'error': str(e), 'body': getattr(e.response, 'text', '')},
+                            status=400)
         access_token = tk.get('access_token')
         acc = PoolAccount.objects.create(
             provider='facebook',
