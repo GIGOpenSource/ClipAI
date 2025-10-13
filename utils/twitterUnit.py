@@ -270,15 +270,17 @@ def createTaskDetail(platform: str, text: str, sendType: str, task: TasksSimplet
             task_id=task.id,
             owner_id=userId,
             account_id=robotId,
-            success=status
+
         )
         if status:
+            createData.success = "success"
             createData.external_id = articleId
         else:
             try:
                 error_code = str(errorMessage).split()[0]
             except:
                 error_code = ''
+            createData.success = "failed"
             createData.error_code = error_code
             createData.error_message = errorMessage
         createData.save()

@@ -312,7 +312,7 @@ class TasksSimpletaskrun(models.Model):
     used_prompt = models.CharField(max_length=200)
     ai_model = models.CharField(max_length=100)
     ai_provider = models.CharField(max_length=50)
-    success = models.BooleanField()
+    success = models.CharField(max_length=50)
     external_id = models.CharField(max_length=100)
     error_code = models.CharField(max_length=64)
     error_message = models.TextField()
