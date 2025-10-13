@@ -58,7 +58,7 @@ class TwitterUnit(object):
                     data = response.data
                     createArticle("twitter", data, robotId)
                     createTaskDetail("twitter", text=text, sendType="post", task=task, aiConfig=aiConfig, status=True,
-                                     errorMessage=None, articleId=data.id, userId=userId, robotId=robotId, )
+                                     errorMessage=None, articleId=data["id"], userId=userId, robotId=robotId, )
                 else:
                     data = dict()
             except:
@@ -121,8 +121,7 @@ class TwitterUnit(object):
                     user_dict = {user['id']: user for user in userList}
                     newComments = [{**item, 'name': user_dict.get(item['author_id'], {}).get('name', 'Unknown'),
                                     'username': user_dict.get(item['author_id'], {}).get('username', 'unknown_user')}
-                                   for item in
-                                   comments]
+                                   for item in comments]
                     data['comments'] = newComments
                     print(f"获取推文 {tweet_id} 评论列表成功 内容\n：{newComments}")
                     createArticleComments(tweet_id, newComments)
@@ -224,6 +223,8 @@ def createArticleComments(articleId: str, data: list) -> bool:
     """
     try:
         for item in data:
+            print(f" 创建文章评论==>{item}")
+            articleId = Article.objects.get(article_id=articleId).id
             comment = ArticleComments.objects.create(
                 article_id=articleId,
                 comment_id=item.get("id"),
@@ -234,7 +235,8 @@ def createArticleComments(articleId: str, data: list) -> bool:
             )
             comment.save()
         return True
-    except:
+    except Exception as e:
+        print(e)
         return False
 
 
