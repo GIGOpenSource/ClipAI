@@ -163,7 +163,7 @@ class DetailView(APIView):
                 name='platform',
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
-                description='平台名称 x ins fb',
+                description='平台名称 twitter ins fb',
                 required=True
             ),
             OpenApiParameter(
@@ -183,9 +183,17 @@ class DetailView(APIView):
         ]
     )
     def get(self, request):
-        userId = request.user
-        robotList = PoolAccount.objects.filter(owner_id=userId).values('id')
-        robotList = [robot["id"] for robot in robotList]
+        userId = request.user.id
+        userData = AuthUser.objects.get(id=userId)
+        if userData.is_superuser:
+            robotList = PoolAccount.objects.all()
+            enterprise_id = request.query_params.get('enterprise_id')
+            if enterprise_id:
+                robotList = robotList.filter(owner_id=enterprise_id)
+            robotList = [robot["id"] for robot in robotList.values('id')]
+        else:
+            robotList = PoolAccount.objects.filter(owner_id=userId).values('id')
+            robotList = [robot["id"] for robot in robotList]
         # 获取查询参数
         platform = request.query_params.get('platform')
         start_date = request.query_params.get('start_date')
