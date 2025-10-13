@@ -19,7 +19,7 @@ class LoggingUtil:
         log_file = f"{log_dir}/{timestamp}.log"
 
         # 配置循环文件处理器(10MB限制)
-        handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5)
+        handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8')
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
