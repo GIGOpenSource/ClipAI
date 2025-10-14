@@ -85,11 +85,3 @@ class SimpleTaskAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(SimpleTaskRun)
-class SimpleTaskRunAdmin(admin.ModelAdmin):
-    list_display = ('id', 'task', 'owner', 'provider', 'type', 'success', 'external_id', 'created_at')
-    list_filter = ('provider', 'type', 'success')
-    search_fields = ('task__id', 'owner__username', 'external_id', 'error_code')
-    readonly_fields = ('created_at',)
-
-

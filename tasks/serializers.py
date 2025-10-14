@@ -1,10 +1,11 @@
+from django.contrib.auth.models import User
 from rest_framework import serializers
 from urllib3 import request
 from django.db.models import Q
-from .models import SimpleTask
+from .models import SimpleTask, SimpleTaskRun
 from social.models import PoolAccount
 from prompts.models import PromptConfig
-from models.models import SocialPoolaccount
+from models.models import SocialPoolaccount, TasksSimpletaskrun, TasksSimpletask, TasksSimpletaskSelectedAccounts
 
 
 class SimpleTaskSerializer(serializers.ModelSerializer):
@@ -190,8 +191,30 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
 
 class SimpleTaskRunSerializer(serializers.ModelSerializer):
-    api_secret = serializers.CharField(required=False, allow_blank=True)
+    owner_name = serializers.ReadOnlyField(source='owner.username')
+    task_id = serializers.ReadOnlyField(source='task.id')
+    task_provider = serializers.ReadOnlyField(source='task.provider')
+    prompt_id = serializers.ReadOnlyField(source='prompt.id')
+    prompt_name = serializers.ReadOnlyField(source='prompt.name')
+    account_count = serializers.SerializerMethodField()
+    success_count = serializers.SerializerMethodField()
+    fail_count = serializers.SerializerMethodField()
 
+    def get_account_count(self, obj):
+        # 通过 TasksSimpletaskSelectedAccounts 中间表获取关联的 PoolAccount 数量
+        return TasksSimpletaskSelectedAccounts.objects.filter(simpletask=obj).count()
+    def get_success_count(self, obj):
+        # 获取任务成功执行的次数
+        return TasksSimpletaskrun.objects.filter(task=obj, success='success').count()
+    def get_fail_count(self, obj):
+        # 获取任务失败执行的次数
+        return TasksSimpletaskrun.objects.filter(task=obj, success='failed').count()
     class Meta:
-        model = PoolAccount
+        model = TasksSimpletask
+        fields = ['id', 'provider', 'type', 'text', 'created_at', 'owner_id', 'task_id', 'prompt_name',
+                  'task_provider','owner_name','prompt_id','account_count','success_count','fail_count']
+
+class SimpleTaskRunDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TasksSimpletaskrun
         fields = '__all__'

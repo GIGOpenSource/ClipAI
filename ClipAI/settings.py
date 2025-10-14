@@ -50,8 +50,10 @@ INSTALLED_APPS = [
     'prompts',
     'tasks',
     'stats',
-    'models'
+    'models',
+    'background_task'
 ]
+BACKGROUND_TASK_PRIORITY_ORDER = ['high', 'medium', 'low']
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -188,6 +190,13 @@ CORS_ALLOW_CREDENTIALS = True
 # Celery 已移除（保留空占位，避免旧代码误用）
 CELERY_BROKER_URL = None
 CELERY_RESULT_BACKEND = None
+# 自动任务部分=========
+BACKGROUND_TASK_RUN_ASYNC = True
+BACKGROUND_TASK_ASYNC_THREADS = 4
+
+# 确保 BACKEND 配置正确
+BACKEND = 'django_background_tasks.backends:DatabaseBackend'
+#============================
 CELERY_BEAT_SCHEDULE = {}
 
 # Encryption key for sensitive fields (set in env for production)

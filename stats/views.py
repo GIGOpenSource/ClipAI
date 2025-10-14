@@ -117,6 +117,17 @@ class SummaryView(APIView):
                 total_public_count = Count('id')
             )
             articleData = {item['platform']: {k: v for k, v in item.items() if k != 'platform'} for item in articleData}
+            if not articleData:
+                default_platforms = ['fb', 'ins', 'twitter']
+                for platform in default_platforms:
+                    articleData[platform] = {
+                        'total_impression_count': 0,
+                        'total_comment_count': 0,
+                        'total_message_count': 0,
+                        'total_like_count': 0,
+                        'total_click_count': 0,
+                        'total_public_count': 0
+                    }
             return ApiResponse(data=articleData)
         else:
             # 如果未传日期，按平台分组计算所有数据的总和
@@ -148,6 +159,20 @@ class SummaryView(APIView):
                 else:
                     platform_data['click_rate'] = 0
                 result[platform] = platform_data
+            if not result:
+                default_platforms = ['fb', 'ins', 'twitter']
+                for platform in default_platforms:
+                    result[platform] = {
+                        'total_impression_count': 0,
+                        'total_comment_count': 0,
+                        'total_message_count': 0,
+                        'total_like_count': 0,
+                        'total_click_count': 0,
+                        'total_public_count': 0,
+                        'exposure_rate': 0,
+                        'like_rate': 0,
+                        'click_rate': 0
+                    }
             return ApiResponse(data=result)
 from django.db.models.functions import TruncDate
 
@@ -236,7 +261,7 @@ class DetailView(APIView):
             total_message_count=Sum('message_count'),
             total_like_count=Sum('like_count'),
             total_click_count=Sum('click_count')
-        ).order_by('-created_date')
+        ).order_by('created_date')
 
         result_data = list(detail_data)
         if start_date_obj and end_date_obj:
@@ -263,7 +288,7 @@ class DetailView(APIView):
                         'total_click_count': 0
                     })
             # 重新按日期排序
-            result_data.sort(key=lambda x: x['created_date'], reverse=True)
+            result_data.sort(key=lambda x: x['created_date'], reverse=False)
 
         # return ApiResponse(data=list(detail_data))
         return ApiResponse(data=result_data)

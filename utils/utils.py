@@ -3,6 +3,10 @@ import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+import logging
+import os
+from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 
 class LoggingUtil:
     def __init__(self):
@@ -14,12 +18,16 @@ class LoggingUtil:
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
 
-        # 按时间命名日志文件
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        log_file = f"{log_dir}/{timestamp}.log"
-
-        # 配置循环文件处理器(10MB限制)
-        handler = RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding='utf-8')
+        # 使用时间轮转日志处理器
+        log_file = f"{log_dir}/clipai.log"
+        # 每10分钟轮转一次
+        handler = TimedRotatingFileHandler(
+            log_file,
+            when='M',
+            interval=10,
+            backupCount=100,
+            encoding='utf-8'
+        )
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
@@ -64,4 +72,44 @@ class ApiResponse(Response):
         }
         # 始终使用200作为HTTP状态码
         super().__init__(response_data, status=200, **kwargs)
+
+from django.core.paginator import EmptyPage
+from rest_framework.pagination import PageNumberPagination
+class CustomPagination(PageNumberPagination):
+    page_size = 20  # 默认每页条数
+    page_query_param = 'currentPage'  # 关键：匹配前端的 "currentPage" 参数（指定页码）
+    page_size_query_param = 'pageSize'  # 匹配前端的 "pageSize" 参数（指定每页条数）
+    max_page_size = 999  # 最大每页条数限制
+
+    def get_paginated_response(self, data):
+        # 现在这个方法会在分页生效时被自动调用
+        return ApiResponse({
+            'pagination': {
+                'page': self.page.number,  # 当前页码
+                'page_size': self.page.paginator.per_page,  # 使用实际的page_size参数
+                'total': self.page.paginator.count,  # 总记录数
+                'total_pages': self.page.paginator.num_pages  # 总页数
+            },
+            'results': data
+        })
+
+    def paginate_queryset(self, queryset, request, view=None):
+        """
+        处理超出范围的页码请求
+        """
+        try:
+            return super().paginate_queryset(queryset, request, view=view)
+        except Exception as e:
+            # 捕获所有分页相关的异常
+            if "Invalid page" in str(e) or isinstance(e, EmptyPage):
+                # 当请求的页码无效时，返回空结果而不是抛出异常
+                self.request = request
+                # 创建一个空的分页结果
+                page_size = self.get_page_size(request) or self.page_size
+                from django.core.paginator import Paginator
+                empty_paginator = Paginator([], page_size)
+                self.page = empty_paginator.page(1)
+                return []
+            # 如果是其他异常，重新抛出
+            raise e
 

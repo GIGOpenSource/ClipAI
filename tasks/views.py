@@ -1,39 +1,207 @@
+from django.db.models import Max
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
+from urllib3 import request
+
 from accounts.permissions import IsOwnerOrAdmin
-from utils.utils import logger
+from models.models import TasksSimpletaskrun, TasksSimpletask
+from utils.utils import logger, ApiResponse, CustomPagination
 from .models import SimpleTask, SimpleTaskRun
-from .serializers import SimpleTaskSerializer
+from .serializers import SimpleTaskSerializer, SimpleTaskRunSerializer, SimpleTaskRunDetailSerializer
 from stats.utils import record_success_run
 from django.utils import timezone
 from ai.models import AIConfig
 from social.models import PoolAccount
 from utils.largeModelUnit import LargeModelUnit
 from utils.twitterUnit import TwitterUnit, createTaskDetail
+from rest_framework import viewsets, filters
+from django_filters.rest_framework import DjangoFilterBackend
 
-
+@extend_schema(tags=["任务日志"])
 @extend_schema_view(
-    list=extend_schema(summary='简单任务列表', tags=['任务执行（非定时）']),
-    retrieve=extend_schema(summary='简单任务详情', tags=['任务执行（非定时）']),
-    create=extend_schema(summary='创建简单任务（非定时）', tags=['任务执行（非定时）']),
-    update=extend_schema(summary='更新简单任务', tags=['任务执行（非定时）']),
-    partial_update=extend_schema(summary='部分更新简单任务', tags=['任务执行（非定时）']),
-    destroy=extend_schema(summary='删除简单任务', tags=['任务执行（非定时）'])
+    list=extend_schema(summary='任务日志列表',
+                       parameters=[OpenApiParameter(name='start_date', description='开始日期 (格式: YYYY-MM-DD)',
+                                                    required=False, type=OpenApiTypes.DATE),
+                                   OpenApiParameter(name='end_date', description='结束日期 (格式: YYYY-MM-DD)',
+                                                    required=False, type=OpenApiTypes.DATE),
+                                   ]),
 )
 class SimpleTaskRunViewSet(viewsets.ModelViewSet):
-    queryset = SimpleTaskRun.objects.all().order_by('-created_at')
+    serializer_class = SimpleTaskRunSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+    pagination_class = CustomPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['provider', 'type', 'prompt__id']
+    search_fields = ['text']
+    ordering_fields = ['created_at']
+
+    def list(self, request, *args, **kwargs):
+        # 获取过滤后的查询集
+        queryset = self.filter_queryset(self.get_queryset())
+        # 获取分页器实例
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            # 使用自定义分页响应
+            return self.get_paginated_response(serializer.data)
+        # 如果没有分页，返回普通响应
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse(serializer.data)
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return TasksSimpletask.objects.none()
+        # 获取用户有权限访问的任务运行记录
+        if user.is_staff:
+            task_runs = TasksSimpletaskrun.objects.all()
+        else:
+            task_runs = TasksSimpletaskrun.objects.filter(owner=user)
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            try:
+                from datetime import datetime
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                task_runs = task_runs.filter(created_at__date__gte=start_date_obj)
+            except ValueError:
+                print("日期格式错误")
+                pass  # 如果日期格式错误，忽略过滤
+        if end_date:
+            try:
+                from datetime import datetime
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                task_runs = task_runs.filter(created_at__date__lte=end_date_obj)
+            except ValueError:
+                print("日期格式错误")
+                pass
+                # 按 task_id 分组，获取每个任务的最新运行时间
+        latest_runs = task_runs.values('task_id').annotate(
+            latest_run_time=Max('created_at')
+        ).order_by('-latest_run_time')
+        # 提取 task_id 列表
+        task_ids = [item['task_id'] for item in latest_runs]
+        # 根据 task_ids 查询 TasksSimpletask 表
+        if user.is_staff:
+            queryset = TasksSimpletask.objects.filter(id__in=task_ids)
+        else:
+            queryset = TasksSimpletask.objects.filter(id__in=task_ids, owner=user)
+        return queryset.order_by('-created_at')
 
 
+from rest_framework.views import APIView
+
+
+class TaskLogView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary='任务日志详情',
+        tags=['任务日志'],
+        responses=OpenApiTypes.OBJECT,
+        parameters=[
+            OpenApiParameter(
+                name='simpletask_id',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='任务ID',
+                required=True
+            ),
+            OpenApiParameter(
+                name='status',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='状态 success/failed',
+                required=False
+            ), OpenApiParameter(
+                name='currentPage',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='当前页码',
+                required=False
+            ),
+            OpenApiParameter(
+                name='pageSize',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='每页条数',
+                required=False
+            ),
+        ]
+    )
+    def get(self, request):
+        simpletask_id = request.query_params.get('simpletask_id')
+        status = request.query_params.get('status')
+        user = self.request.user
+        if user.is_staff:
+            queryset = TasksSimpletaskrun.objects.all()
+        else:
+            queryset = TasksSimpletaskrun.objects.filter(owner=request.user)
+        if simpletask_id:
+            try:
+                queryset = queryset.filter(task_id=int(simpletask_id))
+            except (ValueError, TypeError):
+                return ApiResponse({'error': '无效的任务ID'}, status=400)
+
+        if status:
+            queryset = queryset.filter(success=status)
+        queryset = queryset.order_by('-created_at')
+        # serializer = SimpleTaskRunDetailSerializer(queryset, many=True)
+        # return ApiResponse(serializer.data)
+        paginator = CustomPagination()
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+        serializer = SimpleTaskRunDetailSerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    @extend_schema(
+        summary='重试失败任务',
+        tags=['任务日志'],
+        responses=OpenApiTypes.OBJECT,
+        parameters=[
+            OpenApiParameter(
+                name='simpletask_id',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='任务ID',
+                required=True
+            ),
+        ]
+    )
+    def post(self, request):
+        simpletask_id = request.query_params.get('simpletask_id')
+        user = request.user
+        if not simpletask_id:
+            return ApiResponse({'error': '任务ID是必需的'}, status=400)
+        # 获取指定任务中失败的运行记录
+        if user.is_staff:
+            failed_runs = TasksSimpletaskrun.objects.filter(
+                task_id=int(simpletask_id),
+                success='failed'  # 根据实际数据库存储格式调整
+            )
+        else:
+            failed_runs = TasksSimpletaskrun.objects.filter(
+                task_id=int(simpletask_id),
+                success='failed',  # 根据实际数据库存储格式调整
+                owner=user
+            )
+        # 返回失败的任务ID列表
+        failed_ids = list(failed_runs.values_list('id', flat=True))
+        return ApiResponse({
+            'message': f'找到 {len(failed_ids)} 个失败的任务',
+            'failed_task_ids': failed_ids
+        })
+
+@extend_schema(tags=["任务执行（非定时）"])
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表', tags=['任务执行（非定时）']),
     retrieve=extend_schema(summary='简单任务详情', tags=['任务执行（非定时）']),
     create=extend_schema(summary='创建简单任务（非定时）', tags=['任务执行（非定时）']),
     update=extend_schema(summary='更新简单任务', tags=['任务执行（非定时）'],
-                         parameters=[OpenApiParameter(name='selected', description='选中状态'),
-                                     OpenApiParameter(name='selectedList', description='选中账号ID列表')]),
+                         parameters=[OpenApiParameter(name='selected', description='选中状态')]),
     partial_update=extend_schema(summary='部分更新简单任务', tags=['任务执行（非定时）']),
     destroy=extend_schema(summary='删除简单任务', tags=['任务执行（非定时）'])
 )
@@ -63,7 +231,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         task = self.get_object()
-
         # Helper: extract HTTP status code from exceptions
         def _extract_status_code(exc):
             try:
@@ -506,3 +673,74 @@ class GlobalTagsView(APIView):
             })
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+from django.http import JsonResponse
+from .autoTask import schedule_daily_task, schedule_date_task
+from datetime import datetime
+class TaskSchedulerView(APIView):
+    """配置定时任务的接口"""
+
+    @extend_schema(
+        summary='创建每日定时任务',
+        tags=['定时任务'],
+        description='创建一个每天指定时间执行的定时任务',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'hour': {
+                        'type': 'integer',
+                        'description': '执行小时 (0-23)',
+                        'example': 10
+                    },
+                    'minute': {
+                        'type': 'integer',
+                        'description': '执行分钟 (0-59)',
+                        'example': 30
+                    },
+                    'repeat_times': {
+                        'type': 'integer',
+                        'description': '每次执行的重复次数',
+                        'example': 3
+                    }
+                },
+                'required': ['hour']
+            }
+        },
+        responses={
+            200: {
+                'description': '任务创建成功',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'status': 'success',
+                            'message': '定时任务已配置'
+                        }
+                    }
+                }
+            },
+            400: {
+                'description': '请求参数错误',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'status': 'error',
+                            'message': '错误信息'
+                        }
+                    }
+                }
+            }
+        }
+    )
+    def post(self, request):
+        # 示例：配置每天10:30执行3次任务
+        try:
+            hour = request.data.get('hour', 10)
+            minute = request.data.get('minute', 30)
+            repeat_times = request.data.get('repeat_times', 3)
+
+            # 调用autoTask中的方法创建定时任务
+            schedule_daily_task(hour=hour, minute=minute, repeat_times=repeat_times)
+            return JsonResponse({'status': 'success', 'message': '定时任务已配置'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
