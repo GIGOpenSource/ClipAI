@@ -4,11 +4,13 @@ from django.contrib.auth.models import User
 from rest_framework import serializers
 from urllib3 import request
 from django.db.models import Q
+
+from utils.autoTask import scheduler
+
 from .models import SimpleTask, SimpleTaskRun
 from social.models import PoolAccount
 from prompts.models import PromptConfig
 from models.models import SocialPoolaccount, TasksSimpletaskrun, TasksSimpletask, TasksSimpletaskSelectedAccounts
-
 
 class SimpleTaskSerializer(serializers.ModelSerializer):
     owner = serializers.HiddenField(default=serializers.CurrentUserDefault())
@@ -116,8 +118,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
-        if task_timing_type == "timing":
-            pass
+
+
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = self.context['request'].user
@@ -136,6 +138,14 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         if selectStatus is False:
             datas = datas.filter(~Q(id__in=accounts_data_ids))
         accounts_data = [item["id"] for item in datas]
+
+        if task_timing_type == "timing":
+            # 提示词c
+            # 发帖
+            # scheduler.add_job(func=run, trigger='daily', id=str(obj.id), args=[obj.id], )
+            pass
+
+
         obj.selected_accounts.set(accounts_data)
 
         return obj

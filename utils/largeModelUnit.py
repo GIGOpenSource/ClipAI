@@ -50,18 +50,18 @@ class LargeModelUnit(object):
         except:
             return False, ""
 
-
-if __name__ == '__main__':
-    base_url = "https://api.deepseek.com/chat/completions"
-    model = "deepseek-chat"
-    api_key = "sk-7fbfac05d6314d779d70da5702583576"
-    base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
-    messages = [
-        {'role': 'system', 'content': base_sys},
-        {'role': 'system',
-         'content': 'Target language: English. Reply ONLY in English. Keep it short and friendly.'},
-        {'role': 'user', 'content': f"Please write a short post for deepseek."},
-    ]
-    client = LargeModelUnit(model, api_key, base_url)
-    flag,message  = client.generateToDeepSeek( messages)
-    print(message)
+#
+# if __name__ == '__main__':
+#     base_url = "https://api.deepseek.com/chat/completions"
+#     model = "deepseek-chat"
+#     api_key = "sk-7fbfac05d6314d779d70da5702583576"
+#     base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
+#     messages = [
+#         {'role': 'system', 'content': base_sys},
+#         {'role': 'system',
+#          'content': 'Target language: English. Reply ONLY in English. Keep it short and friendly.'},
+#         {'role': 'user', 'content': f"Please write a short post for deepseek."},
+#     ]
+#     client = LargeModelUnit(model, api_key, base_url)
+#     flag,message  = client.generateToDeepSeek( messages)
+#     print(message)
