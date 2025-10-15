@@ -26,9 +26,9 @@ def createScheduleTriggers(triggersType: str = 'date' or 'interval' or 'cron', *
     """
 
     if triggersType == "date":
-        triggers = DateTrigger(run_date=kwargs.get("run_date"))
+        triggers = DateTrigger(*args, **kwargs)
     elif triggersType == "interval":
-        triggers = IntervalTrigger(**kwargs)
+        triggers = IntervalTrigger(*args,**kwargs)
     else:
-        triggers = CronTrigger(**kwargs)
+        triggers = CronTrigger(*args,**kwargs)
     return triggers
