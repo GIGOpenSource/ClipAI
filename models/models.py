@@ -361,7 +361,8 @@ class TasksSimpletask(models.Model):
     owner = models.ForeignKey(AuthUser, models.DO_NOTHING)
     prompt = models.ForeignKey(PromptsPromptconfig, models.DO_NOTHING, blank=True, null=True)
     task_remark = models.CharField(max_length=255)
-    select_status = models.BooleanField()
+    select_status = models.BooleanField(blank=True, null=True)
+    task_timing_type = models.CharField(max_length=30, blank=True, null=True, db_comment='是否定时任务')
 
     class Meta:
         managed = False
