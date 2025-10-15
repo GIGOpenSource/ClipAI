@@ -3,6 +3,8 @@ from django_apscheduler.jobstores import DjangoJobStore
 from django.utils import timezone
 from pycparser.c_ast import Switch
 
+from utils.scheduleUnit import createScheduleTriggers
+
 
 class DjangoTaskScheduler:
     def __init__(self):
@@ -32,12 +34,12 @@ class DjangoTaskScheduler:
             self.is_running = False
             print("调度器已关闭")
 
-    def add_job(self, func, trigger, job_id, replace_existing=True, **kwargs):
+    def add_job(self, func, triggerType, job_id, replace_existing=True, **kwargs):
         """
         添加定时任务
 
         :param func: 任务函数
-        :param trigger: 触发器类型 (如 'cron周期特定时间点执行', 'interval间隔', 'date日期')
+        :param triggerType: 触发器类型 (如 'cron周期特定时间点执行', 'interval间隔', 'date日期')
         :param job_id: 任务唯一标识
         :param replace_existing: 是否替换已存在的任务
         :param kwargs: 触发器参数 (如 hour, minute 等)
@@ -47,6 +49,7 @@ class DjangoTaskScheduler:
         # if trigger == "interval":
         #
         # if trigger == "cron":
+        trigger = createScheduleTriggers(triggerType, **kwargs)
         try:
             self.scheduler.add_job(
                 func,
