@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from django_apscheduler.jobstores import DjangoJobStore
 from django.utils import timezone
+from pycparser.c_ast import Switch
 
 
 class DjangoTaskScheduler:
@@ -36,11 +37,16 @@ class DjangoTaskScheduler:
         添加定时任务
 
         :param func: 任务函数
-        :param trigger: 触发器类型 (如 'cron', 'interval', 'date')
+        :param trigger: 触发器类型 (如 'cron周期特定时间点执行', 'interval间隔', 'date日期')
         :param job_id: 任务唯一标识
         :param replace_existing: 是否替换已存在的任务
         :param kwargs: 触发器参数 (如 hour, minute 等)
         """
+        # if trigger == "data":
+        #
+        # if trigger == "interval":
+        #
+        # if trigger == "cron":
         try:
             self.scheduler.add_job(
                 func,
@@ -104,12 +110,12 @@ class DjangoTaskScheduler:
 
     # 初始化调度器
 scheduler = DjangoTaskScheduler()
-
-
-# 定义测试任务
-def test_task():
-    print("定时任务触发")
-
+scheduler.start()
+#
+# # 定义测试任务
+# def test_task():
+#     print("定时任务触发")
+#
 #
 # # 添加任务
 # scheduler.add_job(
@@ -119,9 +125,9 @@ def test_task():
 #     hour=13,
 #     minute=10
 # )
-
-# 启动调度器
-scheduler.start()
+#
+# # 启动调度器
+# scheduler.start()
 
     # 其他操作示例
     # scheduler.pause_job('test_job')
