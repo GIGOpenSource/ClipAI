@@ -28,7 +28,7 @@ def delete_old_job_executions(max_age=60):
     DjangoJobExecution.objects.delete_old_job_executions(max_age)
 
 
-def createScheduleTriggers(triggersType: str, *args, **kwargs):
+def createScheduleTriggers(triggersType: str = 'date' or 'interval' or 'cron', *args, **kwargs):
     """
     获取定时任务触发器
     :param triggersType: date,interval,cron
