@@ -110,15 +110,15 @@ scheduler = DjangoTaskScheduler()
 def test_task():
     print("定时任务触发")
 
-
-# 添加任务
-scheduler.add_job(
-    func=test_task,
-    trigger='cron',
-    job_id='testtestjob',
-    hour=13,
-    minute=10
-)
+#
+# # 添加任务
+# scheduler.add_job(
+#     func=test_task,
+#     trigger='cron',
+#     job_id='testtestjob',
+#     hour=13,
+#     minute=10
+# )
 
 # 启动调度器
 scheduler.start()

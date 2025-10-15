@@ -5,6 +5,7 @@ import hashlib
 import secrets
 import urllib.parse
 import requests
+from drf_spectacular.types import OpenApiTypes
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -21,14 +22,17 @@ from .serializers import PoolAccountSerializer
 
 
 @extend_schema_view(
-    list=extend_schema(summary='账号池列表',
-                       ),
-                       retrieve=extend_schema(summary='账号池详情', tags=['账号池']),
-                       create=extend_schema(summary='创建账号池账号', tags=['账号池']),
-                       update=extend_schema(summary='更新账号池账号', tags=['账号池']),
-                       partial_update=extend_schema(summary='部分更新账号池账号', tags=['账号池']),
-                       destroy=extend_schema(summary='删除账号池账号', tags=['账号池'])
-                       )
+    list=extend_schema(summary='账号池列表', parameters=[OpenApiParameter(name='provider', description='平台名称',
+                                                                          required=False, type=str),
+                                                         ], ),
+
+    retrieve=extend_schema(summary='账号池详情', tags=['账号池'], ),
+
+    create=extend_schema(summary='创建账号池账号', tags=['账号池']),
+    update=extend_schema(summary='更新账号池账号', tags=['账号池']),
+    partial_update=extend_schema(summary='部分更新账号池账号', tags=['账号池']),
+    destroy=extend_schema(summary='删除账号池账号', tags=['账号池'])
+)
 class PoolAccountViewSet(viewsets.ModelViewSet):
     queryset = PoolAccount.objects.all().order_by('-updated_at')
     serializer_class = PoolAccountSerializer
@@ -51,7 +55,7 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
                 # 如果没有 owner 字段，普通用户只能看到状态为 active 的公共账户
                 qs = qs.filter(status='active')
         if provider:
-            qs = qs.filter(provider=provider)
+            qs = qs.filter(provider=provider, status='active')
         if status_v:
             qs = qs.filter(status=status_v)
         if name_q:
