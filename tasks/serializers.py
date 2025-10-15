@@ -140,12 +140,17 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         accounts_data = [item["id"] for item in datas]
 
         if task_timing_type == "timing":
-            # 提示词c
-            # 发帖
-            # scheduler.add_job(func=run, trigger='daily', id=str(obj.id), args=[obj.id], )
+            prompt_config = validated_data.get("prompt")  # 获取提示词配置
+            # 调用定时任务执行函数
+            try:
+                from utils.runTimingTask import run_timing_task
+                # 传入任务数据、提示词配置和机器人对象
+                results = run_timing_task(obj, prompt_config, datas)
+            except Exception as e:
+                # 处理定时任务调度异常
+                pass
+
             pass
-
-
         obj.selected_accounts.set(accounts_data)
 
         return obj
