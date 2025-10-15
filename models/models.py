@@ -116,6 +116,54 @@ class AuthUserUserPermissions(models.Model):
         unique_together = (('user', 'permission'),)
 
 
+class BackgroundTask(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    task_name = models.CharField(max_length=190)
+    task_params = models.TextField()
+    task_hash = models.CharField(max_length=40)
+    verbose_name = models.CharField(max_length=255, blank=True, null=True)
+    priority = models.IntegerField()
+    run_at = models.DateTimeField()
+    repeat = models.BigIntegerField()
+    repeat_until = models.DateTimeField(blank=True, null=True)
+    queue = models.CharField(max_length=190, blank=True, null=True)
+    attempts = models.IntegerField()
+    failed_at = models.DateTimeField(blank=True, null=True)
+    last_error = models.TextField()
+    locked_by = models.CharField(max_length=64, blank=True, null=True)
+    locked_at = models.DateTimeField(blank=True, null=True)
+    creator_object_id = models.IntegerField(blank=True, null=True)
+    creator_content_type = models.ForeignKey('DjangoContentType', models.DO_NOTHING, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'background_task'
+
+
+class BackgroundTaskCompletedtask(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    task_name = models.CharField(max_length=190)
+    task_params = models.TextField()
+    task_hash = models.CharField(max_length=40)
+    verbose_name = models.CharField(max_length=255, blank=True, null=True)
+    priority = models.IntegerField()
+    run_at = models.DateTimeField()
+    repeat = models.BigIntegerField()
+    repeat_until = models.DateTimeField(blank=True, null=True)
+    queue = models.CharField(max_length=190, blank=True, null=True)
+    attempts = models.IntegerField()
+    failed_at = models.DateTimeField(blank=True, null=True)
+    last_error = models.TextField()
+    locked_by = models.CharField(max_length=64, blank=True, null=True)
+    locked_at = models.DateTimeField(blank=True, null=True)
+    creator_object_id = models.IntegerField(blank=True, null=True)
+    creator_content_type = models.ForeignKey('DjangoContentType', models.DO_NOTHING, blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'background_task_completedtask'
+
+
 class DjangoAdminLog(models.Model):
     action_time = models.DateTimeField()
     object_id = models.TextField(blank=True, null=True)
@@ -128,6 +176,32 @@ class DjangoAdminLog(models.Model):
     class Meta:
         managed = False
         db_table = 'django_admin_log'
+
+
+class DjangoApschedulerDjangojob(models.Model):
+    id = models.CharField(primary_key=True, max_length=255)
+    next_run_time = models.DateTimeField(blank=True, null=True)
+    job_state = models.BinaryField()
+
+    class Meta:
+        managed = False
+        db_table = 'django_apscheduler_djangojob'
+
+
+class DjangoApschedulerDjangojobexecution(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    status = models.CharField(max_length=50)
+    run_time = models.DateTimeField()
+    duration = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
+    finished = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
+    exception = models.CharField(max_length=1000, blank=True, null=True)
+    traceback = models.TextField(blank=True, null=True)
+    job = models.ForeignKey(DjangoApschedulerDjangojob, models.DO_NOTHING)
+
+    class Meta:
+        managed = False
+        db_table = 'django_apscheduler_djangojobexecution'
+        unique_together = (('job', 'run_time'),)
 
 
 class DjangoContentType(models.Model):
@@ -240,14 +314,14 @@ class TArticle(models.Model):
 class TArticleComments(models.Model):
     id = models.BigAutoField(primary_key=True)
     comment_id = models.CharField(unique=True, max_length=50, db_comment='评论ID')
-    content = models.TextField(db_comment='内容')
-    commenter_id = models.CharField(max_length=50, db_comment='评论者ID')
-    commenter_nickname = models.CharField(max_length=100, db_comment='评论者昵称')
+    content = models.TextField(blank=True, null=True, db_comment='内容')
+    commenter_id = models.CharField(max_length=50, blank=True, null=True, db_comment='评论者ID')
+    commenter_nickname = models.CharField(max_length=100, blank=True, null=True, db_comment='评论者昵称')
     reply_to_id = models.CharField(max_length=50, blank=True, null=True, db_comment='回复者id')
     reply_to_nickname = models.CharField(max_length=100, blank=True, null=True, db_comment='回复者昵称')
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
-    article = models.ForeignKey(TArticle, models.DO_NOTHING, db_comment='文章id或会话id')
+    created_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(blank=True, null=True)
+    article = models.ForeignKey(TArticle, models.DO_NOTHING, blank=True, null=True, db_comment='文章id或会话id')
 
     class Meta:
         managed = False
