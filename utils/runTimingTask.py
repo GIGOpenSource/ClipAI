@@ -29,7 +29,7 @@ def run_timing_task(task_id, validated_data):
     :param task: 任务对象
     :param validated_data: 任务配置数据，包含mentions, tags等参数
     :param prompt_config: 提示词配置
-    :param robot_objects: 机器人对象列表
+    :param robot_objects: 机器人对象列表ll
     """
     # 生成AI文本
     try:
