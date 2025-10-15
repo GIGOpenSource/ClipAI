@@ -1,3 +1,5 @@
+import random
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from django_apscheduler.jobstores import DjangoJobStore
 from django.utils import timezone
@@ -32,29 +34,55 @@ class DjangoTaskScheduler:
             self.is_running = False
             print("调度器已关闭")
 
-    def add_job(self, func, trigger, job_id, replace_existing=True, **kwargs):
+    def add_job(self, func, trigger, job_id, fixed_time=None,replace_existing=True, nums=None, **kwargs):
         """
         添加定时任务
-
         :param func: 任务函数
         :param trigger: 触发器类型 (如 'cron周期特定时间点执行', 'interval间隔', 'date日期')
         :param job_id: 任务唯一标识
         :param replace_existing: 是否替换已存在的任务
         :param kwargs: 触发器参数 (如 hour, minute 等)
         """
-        # if trigger == "data":
-        #
-        # if trigger == "interval":
-        #
-        # if trigger == "cron":
         try:
-            self.scheduler.add_job(
-                func,
-                trigger=trigger,
-                id=job_id,
-                replace_existing=replace_existing, **kwargs
-            )
-            print(f"任务 {job_id} 添加成功")
+            if trigger == "daily":
+                """
+                每日执行N次  trigger=daily    nums=1~5
+                """
+                if nums is None or not (1 <= nums <= 5):
+                    raise ValueError("当trigger为'daily'时，nums必须为1~5之间的整数")
+                random_hours = random.sample(range(24), nums)
+                random_hours.sort()
+                self.scheduler.add_job(
+                    func,
+                    trigger='cron',
+                    id=job_id,
+                    hour=random_hours,
+                    minute=kwargs.get('minute', 0),  # 可指定分钟，默认0分
+                    replace_existing=replace_existing,
+                    args=kwargs.get('args', ()),
+                    kwargs=kwargs.get('kwargs', {})
+                )
+                print(f"每日随机任务 {job_id} 添加成功，每日执行{nums}次，时间点：{random_hours}时")
+            if trigger == "fixed":
+                """
+                每fixed  trigger=interval    nums=1~5
+                """
+                scheduler.add_job(
+                    func,
+                    trigger='date',
+                    job_id=job_id,
+                    run_date=fixed_time,
+                    args=kwargs.get('args', ()),
+                    kwargs=kwargs.get('kwargs', {})
+                )
+            else:
+                self.scheduler.add_job(
+                        func,
+                        trigger=trigger,
+                        id=job_id,
+                        replace_existing=replace_existing, **kwargs
+                )
+                print(f"任务 {job_id} 添加成功")
         except Exception as e:
             print(f"添加任务 {job_id} 失败: {e}")
 

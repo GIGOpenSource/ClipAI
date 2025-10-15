@@ -228,7 +228,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         responses={200: OpenApiResponse(description='执行完成，返回每账号结果')}
     )
     @action(detail=True, methods=['post'])
-    @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         task = self.get_object()
         # Helper: extract HTTP status code from exceptions
