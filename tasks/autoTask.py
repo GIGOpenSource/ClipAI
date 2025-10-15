@@ -57,7 +57,7 @@ def schedule_daily_task(hour, minute, repeat_times=1):
     Task.objects.create(
         task_name='tasks.autoTask.scheduled_get_data',
         # 使用正确的参数格式
-        task_params=f'[[{repeat_times}]]',  # 传递 repeat_times 参数
+        task_params=f'[[{repeat_times}], {{}}]', # 传递 repeat_times 参数
         run_at=target_time,  # 使用正确的字段名
         repeat=Task.DAILY,  # 每天重复
         queue='default'  # 添加队列名称
