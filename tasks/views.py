@@ -1,3 +1,4 @@
+from django.contrib.messages.context_processors import messages
 from django.db.models import Max
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import viewsets
@@ -9,7 +10,7 @@ from urllib3 import request
 
 from accounts.permissions import IsOwnerOrAdmin
 from models.models import TasksSimpletaskrun, TasksSimpletask
-from utils.utils import logger, ApiResponse, CustomPagination
+from utils.utils import logger, ApiResponse, CustomPagination, generate_message, merge_text
 from .models import SimpleTask, SimpleTaskRun
 from .serializers import SimpleTaskSerializer, SimpleTaskRunSerializer, SimpleTaskRunDetailSerializer
 from stats.utils import record_success_run
@@ -20,6 +21,7 @@ from utils.largeModelUnit import LargeModelUnit
 from utils.twitterUnit import TwitterUnit, createTaskDetail
 from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
+
 
 @extend_schema(tags=["任务日志"])
 @extend_schema_view(
@@ -195,6 +197,7 @@ class TaskLogView(APIView):
             'failed_task_ids': failed_ids
         })
 
+
 @extend_schema(tags=["任务执行（非定时）"])
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表', tags=['任务执行（非定时）']),
@@ -230,6 +233,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         task = self.get_object()
+
         # Helper: extract HTTP status code from exceptions
         def _extract_status_code(exc):
             try:
@@ -259,19 +263,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         # 获取 AI 配置（在循环外部获取一次）
         ai_qs = AIConfig.objects.filter(enabled=True).order_by('-priority', 'name')
 
-        # Map language code to display name for clearer instruction
-        lang_map = {
-            'auto': 'Auto',
-            'zh': 'Chinese',
-            'en': 'English',
-            'ja': 'Japanese',
-            'ko': 'Korean',
-            'es': 'Spanish',
-            'fr': 'French',
-            'de': 'German',
-        }
-
-        # 获取选中的账号
         try:
             selected_qs = task.selected_accounts.all()
             selected_ids = list(selected_qs.values_list('id', flat=True))
@@ -312,45 +303,12 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                         continue
             except Exception:
                 pass
-
-            # 为每个账号调用 AI 生成
-            lang_code = (getattr(task, 'language', 'auto') or 'auto')
-            lang_name = lang_map.get(lang_code, 'Auto')
-
-            # 只有当需要生成内容时才调用 AI（或者根据您的业务逻辑调整条件）
             should_generate_content = True  # 或者根据具体条件判断
-
             if should_generate_content:
                 for cfg in ai_qs:
                     try:
-                        # cli = OpenAICompatibleClient(base_url=cfg.base_url or 'https://api.openai.com',
-                        #                              api_key=cfg.api_key)
                         cli = LargeModelUnit(cfg.model, cfg.api_key, cfg.base_url)
-                        # Build system and user prompts per language
-                        if lang_code == 'en':
-                            base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
-                            messages = [
-                                {'role': 'system', 'content': base_sys},
-                                {'role': 'system',
-                                 'content': 'Target language: English. Reply ONLY in English. Keep it short and friendly.'},
-                                {'role': 'user', 'content': f"Please write a short post for {task.provider}."},
-                            ]
-                        elif lang_code == 'zh' or lang_code == 'auto':
-                            base_sys = (getattr(task.prompt, 'content',
-                                                None) or '你是一个社交媒体助理，请生成简短中文内容。')
-                            messages = [
-                                {'role': 'system', 'content': base_sys},
-                                {'role': 'user',
-                                 'content': f"请生成适合 {task.provider} 的{'回复评论' if task.type == 'reply_comment' else '发帖'}文案。"},
-                            ]
-                        else:
-                            base_sys = f'You are a social media copywriter. Generate concise, safe {lang_name} content suitable for Twitter.'
-                            messages = [
-                                {'role': 'system', 'content': base_sys},
-                                {'role': 'system',
-                                 'content': f"Target language: {lang_name}. Reply ONLY in {lang_name}. Keep it short and friendly."},
-                                {'role': 'user', 'content': f"Please write a short post for {task.provider}."},
-                            ]
+                        messages = generate_message(task)
                         if user_text:
                             messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
 
@@ -386,7 +344,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     'final_text': text,
                     'language': getattr(task, 'language', 'auto'),
                 }
-
             # 如果仍然没有文本，跳过该账号
             if not text:
                 results.append(
@@ -397,24 +354,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             # 附加 tags/mentions（mentions 前缀 @）
             final_text = text  # 使用为当前账号生成的文本
             logger.info(f"为账号 {acc.id} 生成的文本：{final_text}")
-            if task.tags:
-                tail = ' ' + ' '.join('#' + t.lstrip('#') for t in task.tags[:5])
-                final_text = (final_text + tail).strip()
-            if task.mentions:
-                # 处理 mentions：支持字符串和列表格式
-                mention_list = []
-                if isinstance(task.mentions, str):
-                    # 字符串格式：'user1,user2,user3'
-                    mention_list = [m.strip() for m in task.mentions.split(',') if m.strip()]
-                elif isinstance(task.mentions, list):
-                    # 列表格式：['user1', 'user2', 'user3']
-                    mention_list = [str(m).strip() for m in task.mentions if str(m).strip()]
-                # 添加 @ 符号前缀并限制数量
-                if mention_list:
-                    mstr = ' ' + ' '.join('@' + m.lstrip('@') for m in mention_list[:10])
-                    final_text = (final_text + mstr).strip()
-
-            # 执行平台操作
+            final_text = merge_text(task, final_text)
             try:
                 if task.provider == 'twitter':
                     api_key = acc.api_key
@@ -673,9 +613,12 @@ class GlobalTagsView(APIView):
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 from django.http import JsonResponse
 
 from datetime import datetime
+
+
 class TaskSchedulerView(APIView):
     """配置定时任务的接口"""
 
