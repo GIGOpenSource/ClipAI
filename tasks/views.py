@@ -675,7 +675,7 @@ class GlobalTagsView(APIView):
             return Response({'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 from django.http import JsonResponse
-from .autoTask import schedule_daily_task, schedule_date_task
+
 from datetime import datetime
 class TaskSchedulerView(APIView):
     """配置定时任务的接口"""
@@ -740,7 +740,7 @@ class TaskSchedulerView(APIView):
             repeat_times = request.data.get('repeat_times', 3)
 
             # 调用autoTask中的方法创建定时任务
-            schedule_daily_task(hour=hour, minute=minute, repeat_times=repeat_times)
+            # schedule_daily_task(hour=hour, minute=minute, repeat_times=repeat_times)
             return JsonResponse({'status': 'success', 'message': '定时任务已配置'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
