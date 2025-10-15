@@ -147,7 +147,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         #         from utils.runTimingTask import run_timing_task
         #         # 传入任务数据、提示词配置和机器人对象
         #         results = run_timing_task(obj, prompt_config, datas)
-        #     except Exception as e:
+        #     except Exception as e:11
         #         # 处理定时任务调度异常
         #         pass
         #     pass
