@@ -286,7 +286,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         err_count = 0
 
         for acc in selected_qs:
-            # 为每个账号重新生成 AI 文本
+
             user_text = (task.text or '').strip()
             text = ''
             ai_meta = {}

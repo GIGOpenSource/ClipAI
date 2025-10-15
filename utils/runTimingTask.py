@@ -12,63 +12,17 @@ import random
 import json
 from typing import List, Dict
 from datetime import timezone
+
+from ai.models import AIConfig
+from social.models import PoolAccount
+from tasks.models import SimpleTaskRun
 from utils.largeModelUnit import LargeModelUnit
 from utils.twitterUnit import TwitterUnit, createTaskDetail
-from models.models import TasksSimpletaskrun
+from models.models import TasksSimpletaskrun, TasksSimpletask, SocialPoolaccount
 from stats.utils import record_success_run
-from utils.utils import generate_message
+from utils.utils import generate_message, logger, merge_text
 
-
-def genrate_text(task, prompt_config: Dict, robot_objects: List) -> str:
-    """
-    根据配置信息和机器人对象生成文本
-
-    :param task: 任务对象
-    :param prompt_config: 提示词配置信息，包含模型参数等
-    :param robot_objects: 机器人对象列表
-    :return: 生成的文本
-    """
-    # 从配置中提取参数
-    model = prompt_config.get("model", "gpt-3.5-turbo-instruct")
-    temperature = prompt_config.get("temperature", 0.9)
-    max_tokens = prompt_config.get("max_tokens", 1024)
-    api_key = prompt_config.get("api_key", "")
-    base_url = prompt_config.get("base_url", "")
-    # 创建大模型客户端
-    cli = LargeModelUnit(model, api_key, base_url, temperature)
-    # 构造提示词消息
-    messages = construct_messages(task, prompt_config, robot_objects)
-    # 根据模型类型调用相应的方法
-    if "deepseek" in model.lower():
-        success, text = cli.generateToDeepSeek(messages)
-    else:
-        success, text = cli.generateToOpenAI(messages)
-
-    if success:
-        return text
-    else:
-        raise Exception("Failed to generate text using large model")
-
-
-def construct_messages(task, prompt_config, robot_objects):
-    """
-    构造发送给大模型的消息
-    :param task: 任务对象
-    :param prompt_config: 提示词配置
-    :param robot_objects: 机器人对象列表
-    :return: 消息列表
-    """
-    messages = []
-    # 添加系统角色提示
-    system_prompt = prompt_config.get("system_prompt", "You are a helpful assistant.")
-    messages.append({"role": "system", "content": system_prompt})
-    # 添加用户提示词
-    user_prompt = prompt_config.get("user_prompt", "Please generate content.")
-    messages.append({"role": "user", "content": user_prompt})
-    return messages
-
-
-def run_timing_task(task, validated_data: Dict, prompt_config: Dict, robot_objects: List):
+def run_timing_task(task_id, validated_data):
     """
     执行定时任务
 
@@ -79,110 +33,87 @@ def run_timing_task(task, validated_data: Dict, prompt_config: Dict, robot_objec
     """
     # 生成AI文本
     try:
+        task = TasksSimpletask.objects.filter(id=task_id)
+        datas = SocialPoolaccount.objects.filter(provider=validated_data["provider"],
+                                                 status="active")
         # 中英文提示词
         message = generate_message(task)
+        for acc in datas:
+            user_text = (task.text or '').strip()
+            text = ''
+            ai_meta = {}
+            last_err = None
+            # 每日使用上限：limited 账号每天最多使用 2 次（无论成功与否）
+            try:
+                if getattr(acc, 'usage_policy', 'unlimited') == 'limited':
+                    today = timezone.now().date()
+                    used_today = SimpleTaskRun.objects.filter(account=acc, created_at__date=today).count()
+            except Exception:
+                pass
+            should_generate_content = True  # 或者根据具体条件判断
+            ai_qs = AIConfig.objects.filter(enabled=True).order_by('-priority', 'name')
+            if should_generate_content:
+                for cfg in ai_qs:
+                    try:
+                        cli = LargeModelUnit(cfg.model, cfg.api_key, cfg.base_url)
+                        messages = generate_message(task)
+                        if user_text:
+                            messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
+                        logger.info(f"为账号 {acc.id} 调用 chat_completion")
+                        if cfg.provider == "openai":
+                            flag, text = cli.generateToOpenAI(messages=messages)
+                        if cfg.provider == "deepseek":
+                            flag, text = cli.generateToDeepSeek(messages=messages)
+                        if flag:
+                            ai_meta = {
+                                'model': cfg.model,
+                                'provider': cfg.provider,
+                                # 'latency_ms': res.get('latency_ms'),
+                                # 'tokens': res.get('tokens'),
+                                # 'used_prompt': getattr(task.prompt, 'name', None),
+                                'final_text': text,
+                                'language': getattr(task, 'language', 'auto'),
+                            }
+                            break
+                    except Exception as e:
+                        last_err = str(e)
+                        logger.info(f"为账号 {acc.id} 调用模型失败：{last_err}")
 
-        LargeModelUnit()
-
+            # 如果没有生成文本但有用户文本，使用用户文本
+            if not text and user_text:
+                text = user_text
+                ai_meta = {
+                    'model': 'user_provided',
+                    'provider': 'user',
+                    # 'latency_ms': 0,
+                    # 'tokens': 0,
+                    # 'used_prompt': None,
+                    'final_text': text,
+                    'language': getattr(task, 'language', 'auto'),
+                }
+            # 附加 tags/mentions（mentions 前缀 @）
+            final_text = text  # 使用为当前账号生成的文本
+            logger.info(f"为账号 {acc.id} 生成的文本：{final_text}")
+            final_text = merge_text(task, final_text)
+            try:
+                if task.provider == 'twitter':
+                    api_key = acc.api_key
+                    api_secret = acc.api_secret
+                    at = acc.get_access_token()
+                    ats = acc.get_access_token_secret()
+                    client = TwitterUnit(api_key, api_secret, at, ats)
+                    if task.type == 'post':
+                        flag, resp = client.sendTwitter(final_text, int(acc.id), task, cfg, userId=task.owner_id)
+                        logger.info(f"推文发送成功响应: {resp}")
+                        try:
+                            record_success_run(owner_id=task.owner_id, provider='twitter', task_type=task.type,
+                                               started_date=timezone.now().date())
+                        except Exception as e:
+                            pass
+            except Exception as e:
+                raise Exception(f"生成文本失败: {str(e)}")
     except Exception as e:
         raise Exception(f"生成文本失败: {str(e)}")
 
-    # 处理任务参数
-    user_text = (validated_data.get("text") or '').strip()
-    lang_code = (validated_data.get("language") or 'auto')
-    task_type = validated_data.get("type")
-    provider = validated_data.get("provider")
-    tags = validated_data.get("tags", [])
-    mentions = validated_data.get("mentions", [])
 
-    # 语言映射
-    lang_map = {
-        'auto': 'Auto',
-        'zh': 'Chinese',
-        'en': 'English',
-        'ja': 'Japanese',
-        'ko': 'Korean',
-        'es': 'Spanish',
-        'fr': 'French',
-        'de': 'German',
-    }
-    lang_name = lang_map.get(lang_code, 'Auto')
 
-    # 构造最终文本
-    final_text = generated_text
-    if user_text:
-        final_text = f"{final_text} {user_text}"
-
-    # 添加标签
-    if tags:
-        tail = ' ' + ' '.join('#' + t.lstrip('#') for t in tags[:5])
-        final_text = (final_text + tail).strip()
-
-    # 添加提及
-    if mentions:
-        mention_list = []
-        if isinstance(mentions, str):
-            mention_list = [m.strip() for m in mentions.split(',') if m.strip()]
-        elif isinstance(mentions, list):
-            mention_list = [str(m).strip() for m in mentions if str(m).strip()]
-
-        if mention_list:
-            mstr = ' ' + ' '.join('@' + m.lstrip('@') for m in mention_list[:10])
-            final_text = (final_text + mstr).strip()
-
-    # 为每个机器人对象执行发帖操作
-    results = []
-    for robot in robot_objects:
-        try:
-            # 获取机器人账户信息
-            api_key = getattr(robot, 'api_key', '')
-            api_secret = getattr(robot, 'api_secret', '')
-
-            if provider == 'twitter':
-                # 执行Twitter发帖
-                at = robot.get_access_token()
-                ats = robot.get_access_token_secret()
-                client = TwitterUnit(api_key, api_secret, at, ats)
-
-                if task_type == 'post':
-                    flag, resp = client.sendTwitter(
-                        final_text,
-                        int(robot.id),
-                        validated_data,
-                        prompt_config,
-                        userId=validated_data.get("owner_id", 0)
-                    )
-
-                    if flag:
-                        tweet_id = resp["id"]
-                        results.append({
-                            'account_id': robot.id,
-                            'status': 'ok',
-                            'tweet_id': tweet_id
-                        })
-
-                        # 记录成功运行
-                        try:
-                            record_success_run(
-                                owner_id=validated_data.get("owner_id", 0),
-                                provider='twitter',
-                                task_type=task_type,
-                                started_date=timezone.now().date()
-                            )
-                        except Exception:
-                            pass
-                    else:
-                        results.append({
-                            'account_id': robot.id,
-                            'status': 'error',
-                            'error': '发送失败'
-                        })
-
-        except Exception as e:
-            results.append({
-                'account_id': robot.id,
-                'status': 'error',
-                'error': str(e)
-            })
-
-    return results
