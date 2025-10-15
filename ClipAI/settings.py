@@ -125,9 +125,9 @@ if POSTGRES_HOST:
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv('POSTGRES_DB', 'clipai'),
-            'USER': os.getenv('POSTGRES_USER', 'flashc'),
-            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'flashc'),
-            'HOST': "114.116.252.39",
+            'USER': os.getenv('POSTGRES_USER', 'clipai'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'clipai'),
+            'HOST': "43.155.153.147",
             'PORT': os.getenv('POSTGRES_PORT', '5432'),
         }
     }
