@@ -16,6 +16,8 @@ from utils.largeModelUnit import LargeModelUnit
 from utils.twitterUnit import TwitterUnit, createTaskDetail
 from models.models import TasksSimpletaskrun
 from stats.utils import record_success_run
+from utils.utils import generate_message
+
 
 def genrate_text(task, prompt_config: Dict, robot_objects: List) -> str:
     """
@@ -77,7 +79,11 @@ def run_timing_task(task, validated_data: Dict, prompt_config: Dict, robot_objec
     """
     # 生成AI文本
     try:
-        generated_text = genrate_text(task, prompt_config, robot_objects)
+        # 中英文提示词
+        message = generate_message(task)
+
+        LargeModelUnit()
+
     except Exception as e:
         raise Exception(f"生成文本失败: {str(e)}")
 

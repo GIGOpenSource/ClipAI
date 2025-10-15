@@ -140,6 +140,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         accounts_data = [item["id"] for item in datas]
 
         if task_timing_type == "timing":
+            add
             prompt_config = validated_data.get("prompt")  # 获取提示词配置
             # 调用定时任务执行函数
             try:
