@@ -105,33 +105,6 @@ class DjangoTaskScheduler:
             print(f"获取任务失败: {e}")
             return []
 
-
-# 使用示例
-
-    # 初始化调度器
+# 初始化调度器
 scheduler = DjangoTaskScheduler()
 scheduler.start()
-#
-# # 定义测试任务
-# def test_task():
-#     print("定时任务触发")
-#
-#
-# # 添加任务
-# scheduler.add_job(
-#     func=test_task,
-#     trigger='cron',
-#     job_id='testtestjob',
-#     hour=13,
-#     minute=10
-# )
-#
-# # 启动调度器
-# scheduler.start()
-
-    # 其他操作示例
-    # scheduler.pause_job('test_job')
-    # scheduler.resume_job('test_job')
-    # scheduler.modify_job('test_job', minute=55)
-    # scheduler.remove_job('test_job')
-    # print(scheduler.get_all_jobs())
