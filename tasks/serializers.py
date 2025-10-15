@@ -32,6 +32,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     # tags = serializers.CharField(required=False, allow_blank=True)
     task_remark = serializers.CharField(required=False, allow_blank=True)
     select_status = serializers.BooleanField(required=False, default=None)
+    task_timing_type = serializers.CharField(required=False, allow_blank=True,
+                                             help_text='任务执行时间类型，可选值：once/timing')
     prompt_name = serializers.SerializerMethodField()
     # 人性化输入字段（后端会映射到 payload）
     twitter_reply_to_tweet_id = serializers.CharField(write_only=True, required=False, allow_blank=True,
@@ -56,7 +58,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'select_status'
+            'created_at', 'select_status', 'task_timing_type'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
                             'created_at', 'updated_at']
@@ -113,6 +115,9 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
+        task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
+        if task_timing_type == "timing":
+            pass
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = self.context['request'].user
@@ -120,11 +125,11 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         accounts_data_ids = [item["id"] for item in accounts_data]
         owner = validated_data["owner"]
         if owner.is_superuser:
-            datas = SocialPoolaccount.objects.filter( provider=validated_data["provider"],
+            datas = SocialPoolaccount.objects.filter(provider=validated_data["provider"],
                                                      status="active").values('id', 'name')
         else:
             datas = SocialPoolaccount.objects.filter(owner_id=owner.id, provider=validated_data["provider"],
-                                                 status="active").values('id', 'name')
+                                                     status="active").values('id', 'name')
         if selectStatus is True:
             if len(accounts_data_ids) != 0:
                 datas = datas.filter(Q(id__in=accounts_data_ids))
