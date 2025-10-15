@@ -21,10 +21,6 @@ services:
     build: .
     container_name: clipai_web
     command: sh -c "
-      find . -path \"*/migrations/*.py\" -not -name \"__init__.py\" -delete &&
-      find . -path \"*/migrations/*.pyc\" -delete &&
-      python manage.py makemigrations &&
-      python manage.py migrate --noinput && 
       python manage.py runserver 0.0.0.0:8000"
     ports:
         - "8000:8000"
