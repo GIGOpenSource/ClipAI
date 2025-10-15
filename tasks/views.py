@@ -303,12 +303,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                         continue
             except Exception:
                 pass
-
-            # 为每个账号调用 AI 生成
-
-            # 只有当需要生成内容时才调用 AI（或者根据您的业务逻辑调整条件）
             should_generate_content = True  # 或者根据具体条件判断
-
             if should_generate_content:
                 for cfg in ai_qs:
                     try:
@@ -349,7 +344,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                     'final_text': text,
                     'language': getattr(task, 'language', 'auto'),
                 }
-
             # 如果仍然没有文本，跳过该账号
             if not text:
                 results.append(
