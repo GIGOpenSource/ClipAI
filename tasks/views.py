@@ -744,3 +744,18 @@ class TaskSchedulerView(APIView):
             return JsonResponse({'status': 'success', 'message': '定时任务已配置'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+
+# def scheduler_test():
+#     print('定时任务触发')
+#
+# from apscheduler.schedulers.background import BackgroundScheduler
+# scheduler = BackgroundScheduler()
+# try:
+#     # 添加定时任务，第一个参数为需要定时执行的任务，'cron'定时任务类型，每天0点，30分执行一次，任务id为test。
+# 	scheduler.add_job(scheduler_test, 'cron', hour=11, minute=35, id='test', replace_existing=True,timezone='Asia/Shanghai')
+#     # 启动定时任务
+# 	scheduler.start()
+# except Exception as e:
+#     print(e)
+#     # 停止定时任务
+#     scheduler.shutdown()
