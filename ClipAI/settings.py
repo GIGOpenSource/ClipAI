@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'drf_spectacular_sidecar',
     'corsheaders',
     'rest_framework_simplejwt.token_blacklist',
+    "django_apscheduler",
     'ai',
     'social',
     'prompts',
