@@ -52,6 +52,7 @@ class SimpleTask(models.Model):
     last_text = models.TextField(blank=True, help_text='上次实际发送的最终文案（含 tags/mentions）')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    select_status = models.BooleanField()
 
     class Meta:
         ordering = ['-updated_at']
@@ -85,6 +86,7 @@ class SimpleTaskRun(models.Model):
     error_message = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
 
     class Meta:
         ordering = ['-created_at']

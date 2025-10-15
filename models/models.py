@@ -361,6 +361,7 @@ class TasksSimpletask(models.Model):
     owner = models.ForeignKey(AuthUser, models.DO_NOTHING)
     prompt = models.ForeignKey(PromptsPromptconfig, models.DO_NOTHING, blank=True, null=True)
     task_remark = models.CharField(max_length=255)
+    select_status = models.BooleanField()
 
     class Meta:
         managed = False

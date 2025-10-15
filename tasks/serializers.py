@@ -1,3 +1,5 @@
+from math import trunc
+
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from urllib3 import request
@@ -29,7 +31,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     # mentions = serializers.CharField(required=False, allow_blank=True)
     # tags = serializers.CharField(required=False, allow_blank=True)
     task_remark = serializers.CharField(required=False, allow_blank=True)
-    selectStatus = serializers.BooleanField(required=False, default=None)
+    select_status = serializers.BooleanField(required=False, default=None)
     prompt_name = serializers.SerializerMethodField()
     # 人性化输入字段（后端会映射到 payload）
     twitter_reply_to_tweet_id = serializers.CharField(write_only=True, required=False, allow_blank=True,
@@ -54,7 +56,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'selectStatus'
+            'created_at', 'select_status'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
                             'created_at', 'updated_at']
@@ -110,11 +112,52 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
+        selectStatus = validated_data["select_status"]
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = self.context['request'].user
         obj = super().create(validated_data)
-        # 正确处理 selected_accounts 关联
+        accounts_data_ids = [item["id"] for item in accounts_data]
+        owner = validated_data["owner"]
+        if owner.is_superuser:
+            datas = SocialPoolaccount.objects.filter( provider=validated_data["provider"],
+                                                     status="active").values('id', 'name')
+        else:
+            datas = SocialPoolaccount.objects.filter(owner_id=owner.id, provider=validated_data["provider"],
+                                                 status="active").values('id', 'name')
+        if selectStatus is True:
+            if len(accounts_data_ids) != 0:
+                datas = datas.filter(Q(id__in=accounts_data_ids))
+        if selectStatus is False:
+            datas = datas.filter(~Q(id__in=accounts_data_ids))
+        accounts_data = [item["id"] for item in datas]
+        obj.selected_accounts.set(accounts_data)
+
+        return obj
+
+
+def update(self, instance, validated_data):
+    isSuper = validated_data["owner"].is_superuser
+    if isSuper:
+        datas = SocialPoolaccount.objects.filter(status="active").values('id', 'name')
+    else:
+        ownerId = validated_data["owner"].id
+        datas = SocialPoolaccount.objects.filter(owner_id=ownerId, provider=validated_data["provider"],
+                                                 status="active").values('id', 'name')
+    accounts_data = validated_data.pop('selected_accounts', None)
+    selectStatus = validated_data["select_status"]
+    accounts_list = [item["id"] for item in accounts_data]
+    if selectStatus is True:
+        if len(accounts_list) != 0:
+            datas = datas.filter(Q(id__in=accounts_list))
+        accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
+    if selectStatus is False:
+        datas = datas.filter(~Q(id__in=accounts_list))
+        accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
+    obj = super().update(instance, validated_data)
+
+    # 正确处理 selected_accounts 关联
+    if accounts_data is not None:
         if accounts_data:
             # 从嵌套数据中提取实际的 PoolAccount 对象
             account_objects = []
@@ -133,61 +176,14 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError(f"账户 ID {account} 不存在")
                 elif hasattr(account, 'id'):  # 如果已经是模型实例
                     account_objects.append(account)
+
             # 设置多对多关系
             obj.selected_accounts.set(account_objects)
-        return obj
-
-    def update(self, instance, validated_data):
-        isSuper = validated_data["owner"].is_superuser
-        if isSuper:
-            datas = SocialPoolaccount.objects.filter(status="active").values('id', 'name')
         else:
-            ownerId = validated_data["owner"].id
-            datas = SocialPoolaccount.objects.filter(owner_id=ownerId, provider=validated_data["provider"],
-                                                     status="active").values('id', 'name')
-        accounts_data = validated_data.pop('selected_accounts', None)
-        selectStatus = validated_data.pop('selectStatus', None)
-        accounts_list = [item["id"] for item in accounts_data]
-        if selectStatus is True:
-            if len(accounts_list) != 0:
-                print("全选,List有数据")
-                datas = datas.filter(Q(id__in=accounts_list))
-            print("全选,List无数据")
-            accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
-        if selectStatus is False:
-            print("反选,List有数据")
-            datas = datas.filter(~Q(id__in=accounts_list))
-            accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
-        obj = super().update(instance, validated_data)
+            # 如果传递空数组，清空所有关联
+            obj.selected_accounts.clear()
 
-        # 正确处理 selected_accounts 关联
-        if accounts_data is not None:
-            if accounts_data:
-                # 从嵌套数据中提取实际的 PoolAccount 对象
-                account_objects = []
-                for account in accounts_data:
-                    if isinstance(account, dict) and 'id' in account:
-                        try:
-                            account_obj = PoolAccount.objects.get(id=account['id'])
-                            account_objects.append(account_obj)
-                        except PoolAccount.DoesNotExist:
-                            raise serializers.ValidationError(f"账户 ID {account['id']} 不存在")
-                    elif isinstance(account, int):
-                        try:
-                            account_obj = PoolAccount.objects.get(id=account)
-                            account_objects.append(account_obj)
-                        except PoolAccount.DoesNotExist:
-                            raise serializers.ValidationError(f"账户 ID {account} 不存在")
-                    elif hasattr(account, 'id'):  # 如果已经是模型实例
-                        account_objects.append(account)
-
-                # 设置多对多关系
-                obj.selected_accounts.set(account_objects)
-            else:
-                # 如果传递空数组，清空所有关联
-                obj.selected_accounts.clear()
-
-        return obj
+    return obj
 
 
 class SimpleTaskRunSerializer(serializers.ModelSerializer):
@@ -203,16 +199,20 @@ class SimpleTaskRunSerializer(serializers.ModelSerializer):
     def get_account_count(self, obj):
         # 通过 TasksSimpletaskSelectedAccounts 中间表获取关联的 PoolAccount 数量
         return TasksSimpletaskSelectedAccounts.objects.filter(simpletask=obj).count()
+
     def get_success_count(self, obj):
         # 获取任务成功执行的次数
         return TasksSimpletaskrun.objects.filter(task=obj, success='success').count()
+
     def get_fail_count(self, obj):
         # 获取任务失败执行的次数
         return TasksSimpletaskrun.objects.filter(task=obj, success='failed').count()
+
     class Meta:
         model = TasksSimpletask
         fields = ['id', 'provider', 'type', 'text', 'created_at', 'owner_id', 'task_id', 'prompt_name',
-                  'task_provider','owner_name','prompt_id','account_count','success_count','fail_count']
+                  'task_provider', 'owner_name', 'prompt_id', 'account_count', 'success_count', 'fail_count']
+
 
 class SimpleTaskRunDetailSerializer(serializers.ModelSerializer):
     class Meta:
