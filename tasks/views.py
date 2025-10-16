@@ -222,6 +222,9 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         provider = self.request.query_params.get('provider')
         if provider:
             qs = qs.filter(provider=provider)
+        task_timing_type = self.request.query_params.get("task_timing_type")
+        if task_timing_type:
+            qs = qs.filter(task_timing_type=task_timing_type)
         return qs
 
     @extend_schema(
