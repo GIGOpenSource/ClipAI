@@ -68,7 +68,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'select_status', 'task_timing_type','exec_type','exec_datetime','exec_nums'
+            'created_at', 'select_status', 'task_timing_type','exec_type','exec_datetime','exec_nums','mission_id',
+            'mission_status'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
                             'created_at', 'updated_at']
