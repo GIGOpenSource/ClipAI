@@ -12,6 +12,7 @@ from social.models import PoolAccount
 from prompts.models import PromptConfig
 from models.models import SocialPoolaccount, TasksSimpletaskrun, TasksSimpletask, TasksSimpletaskSelectedAccounts
 
+
 class SimpleTaskSerializer(serializers.ModelSerializer):
     owner = serializers.HiddenField(default=serializers.CurrentUserDefault())
 
@@ -45,6 +46,13 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     facebook_comment_id = serializers.CharField(write_only=True, required=False, allow_blank=True,
                                                 help_text='Facebook 回复的评论 ID（仅当 type=reply_comment 且 provider=facebook）')
 
+    exec_type = serializers.CharField(required=False, allow_blank=True,
+                                      help_text='"daily"（每日多次）或"fixed"（固定时间一次）')
+    exec_datetime = serializers.DateTimeField(required=False, allow_null=True,
+                                              help_text='固定执行时间（格式：YYYY-MM-DD HH:MM:SS）')
+    exec_nums = serializers.IntegerField(required=False, allow_null=True,
+                                         help_text='执行次数（仅当 exec_type=fixed 时有效）')
+
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
         if obj.prompt:
@@ -60,7 +68,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'select_status', 'task_timing_type'
+            'created_at', 'select_status', 'task_timing_type','exec_type','exec_datetime','exec_nums'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
                             'created_at', 'updated_at']
@@ -116,10 +124,11 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
+        exec_type = validated_data.pop('exec_type', [])
+        exec_datetime = validated_data.pop('exec_datetime', [])
+        exec_nums = validated_data.pop('exec_nums', [])
         selectStatus = validated_data["select_status"]
-        # task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
-
-
+        task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = self.context['request'].user
@@ -138,15 +147,35 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         if selectStatus is False:
             datas = datas.filter(~Q(id__in=accounts_data_ids))
         accounts_data = [item["id"] for item in datas]
-
-        # if task_timing_type == "timing":
-        #     try:
-        #         from utils.runTimingTask import run_timing_task
-        #         # 传入任务数据、提示词配置和机器人对象
-        #         results = run_timing_task(obj.id, validated_data)
-        #     except Exception as e:
-        #         # 处理定时任务调度异常
-        #         pass
+        if task_timing_type == "timing":
+            from utils.runTimingTask import run_timing_task
+            from utils.autoTask import scheduler
+            try:
+                if exec_type == 'daily':
+                    scheduler.add_job(
+                        func=run_timing_task,
+                        trigger='daily',  # 明确指定具体小时
+                        job_id=f'mission_daily_{obj.id}',
+                        nums=exec_nums,
+                        args=(obj.id,),
+                        kwargs={}
+                    )
+                if exec_type == 'fixed':
+                    scheduler.add_job(
+                        func=run_timing_task,
+                        trigger="fixed",
+                        job_id=f'mission_fixed_{obj.id}',
+                        fixed_time=exec_datetime,
+                        args=(obj.id,),
+                        kwargs={},
+                        replace_existing=True
+                    )
+            except Exception as e:
+                # 处理定时任务调度异常
+                pass
+        else:
+            # 即时任务先保存再 调用启动
+            print("1")
         obj.selected_accounts.set(accounts_data)
         return obj
 

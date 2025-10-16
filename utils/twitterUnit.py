@@ -270,7 +270,6 @@ def createTaskDetail(platform: str, text: str, sendType: str, task: TasksSimplet
             task_id=task.id,
             owner_id=userId,
             account_id=robotId,
-
         )
         if status:
             createData.success = "success"

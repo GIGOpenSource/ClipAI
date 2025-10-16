@@ -198,15 +198,15 @@ class TaskLogView(APIView):
         })
 
 
-@extend_schema(tags=["任务执行（非定时）"])
+@extend_schema(tags=["任务执行（定时/非定时）"])
 @extend_schema_view(
-    list=extend_schema(summary='简单任务列表', tags=['任务执行（非定时）']),
-    retrieve=extend_schema(summary='简单任务详情', tags=['任务执行（非定时）']),
-    create=extend_schema(summary='创建简单任务（非定时）', tags=['任务执行（非定时）']),
-    update=extend_schema(summary='更新简单任务', tags=['任务执行（非定时）'],
-                         parameters=[OpenApiParameter(name='selected', description='选中状态')]),
-    partial_update=extend_schema(summary='部分更新简单任务', tags=['任务执行（非定时）']),
-    destroy=extend_schema(summary='删除简单任务', tags=['任务执行（非定时）'])
+    list=extend_schema(summary='简单任务列表'),
+    retrieve=extend_schema(summary='简单任务详情'),
+    create=extend_schema(summary='创建简单任务（非定时）'),
+    update=extend_schema(summary='更新简单任务'),
+
+    partial_update=extend_schema(summary='部分更新简单任务'),
+    destroy=extend_schema(summary='删除简单任务')
 )
 class SimpleTaskViewSet(viewsets.ModelViewSet):
     queryset = SimpleTask.objects.all().order_by('-created_at')
@@ -227,13 +227,11 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary='立即执行简单任务（并行多账号）',
         description='根据 selected_accounts 逐个账号执行。AI 文案按优先级回退。',
-        tags=['任务执行（非定时）'],
         responses={200: OpenApiResponse(description='执行完成，返回每账号结果')}
     )
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         task = self.get_object()
-
         # Helper: extract HTTP status code from exceptions
         def _extract_status_code(exc):
             try:
@@ -279,19 +277,15 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                 PoolAccount.objects.filter(id__in=selected_ids).update(status='active')
             except Exception:
                 pass
-
         # 平台执行
         results = []
         ok_count = 0
         err_count = 0
-
         for acc in selected_qs:
-
             user_text = (task.text or '').strip()
             text = ''
             ai_meta = {}
             last_err = None
-
             # 每日使用上限：limited 账号每天最多使用 2 次（无论成功与否）
             try:
                 if getattr(acc, 'usage_policy', 'unlimited') == 'limited':
@@ -311,7 +305,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                         messages = generate_message(task)
                         if user_text:
                             messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
-
                         logger.info(f"为账号 {acc.id} 调用 chat_completion")
                         if cfg.provider == "openai":
                             flag, text = cli.generateToOpenAI(messages=messages)
@@ -459,14 +452,12 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
                 createTaskDetail(task.provider, text=final_text, sendType=task.type, task=task, aiConfig=cfg,
                                  status=False, errorMessage=str(e), userId=self.request.user.id, robotId=acc.id,
                                  articleId=None)
-
         # 运行完成：将仍为 active 的账号改回 inactive
         if selected_ids:
             try:
                 PoolAccount.objects.filter(id__in=selected_ids, status='active').update(status='inactive')
             except Exception:
                 pass
-
         # 汇总并写回任务状态
         try:
             from django.utils import timezone as _tz
@@ -486,7 +477,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             task.save(update_fields=['last_status', 'last_success', 'last_failed', 'last_run_at'])
         except Exception:
             pass
-
         return Response({'status': 'ok', 'summary': {'ok': ok_count, 'error': err_count}, 'results': results})
 
 
