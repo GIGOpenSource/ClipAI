@@ -8,7 +8,7 @@ import os
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from rest_framework.response import Response
-from models.models import TasksSimpletask as Task
+from models.models import TasksSimpletask as Task,PromptsPromptconfig as Prompts
 
 
 lang_map = {
@@ -25,12 +25,14 @@ lang_map = {
 
 def generate_message(task: Task) -> List[Dict[str, str]]:
     lang_name = lang_map.get(task.language, 'Auto')
+    prompt_text = Prompts.objects.get(id=task.prompt_id).content
+    logger.info(prompt_text)
     if task.language == "zh" or task.language == "auto":
         base_sys = (getattr(task.prompt, 'content', None) or '你是一个社交媒体助理，请生成简短中文内容。')
         messages = [
             {'role': 'system', 'content': base_sys},
             {'role': 'user',
-             'content': f"请生成适合 {task.provider} 的{'回复评论' if task.type == 'reply_comment' else '发帖'}文案。"},
+                 'content': f"请生成适合 {task.provider} 的{'回复评论' if task.type == 'reply_comment' else '发帖'}文案。"},
         ]
     elif task.language == "en":
         base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
