@@ -1,10 +1,16 @@
+import pickle
 import random
+from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from django_apscheduler.jobstores import DjangoJobStore
 from django.utils import timezone
-from pycparser.c_ast import Switch
 
+
+
+fixed_exec_time = timezone.make_aware(
+    datetime(2025, 10, 16, 10, 42, 0)  # 年、月、日、时、分、秒
+)
 
 class DjangoTaskScheduler:
     def __init__(self):
@@ -52,11 +58,12 @@ class DjangoTaskScheduler:
                     raise ValueError("当trigger为'daily'时，nums必须为1~5之间的整数")
                 random_hours = random.sample(range(24), nums)
                 random_hours.sort()
+                hour_str = ",".join(map(str, random_hours))
                 self.scheduler.add_job(
                     func,
                     trigger='cron',
                     id=job_id,
-                    hour=random_hours,
+                    hour=hour_str,
                     minute=kwargs.get('minute', 0),  # 可指定分钟，默认0分
                     replace_existing=replace_existing,
                     args=kwargs.get('args', ()),
@@ -65,7 +72,7 @@ class DjangoTaskScheduler:
                 print(f"每日随机任务 {job_id} 添加成功，每日执行{nums}次，时间点：{random_hours}时")
             if trigger == "fixed":
                 """
-                每fixed  trigger=interval    nums=1~5
+                每fixed 
                 """
                 scheduler.add_job(
                     func,
@@ -75,7 +82,8 @@ class DjangoTaskScheduler:
                     args=kwargs.get('args', ()),
                     kwargs=kwargs.get('kwargs', {})
                 )
-            else:
+                print(f"固定任务 {job_id} 添加成功，每日执行{nums}次，时间点：{fixed_time}时")
+            if trigger == "fixed213":
                 self.scheduler.add_job(
                         func,
                         trigger=trigger,
@@ -133,6 +141,33 @@ class DjangoTaskScheduler:
             print(f"获取任务失败: {e}")
             return []
 
+    def get_job(self, job_id):
+        """获取指定任务（修正版）"""
+        try:
+            job = self.scheduler.get_job(job_id)
+            if job:
+                print(f"获取任务 {job_id} 成功")
+
+                # 直接从 job 对象获取参数（无需手动反序列化 job_state）
+                args = job.args  # 位置参数
+                kwargs = job.kwargs  # 关键字参数
+                func_name = job.func.__name__  # 任务函数名
+                func_module = job.func.__module__  # 任务函数所在模块
+
+                print(f"任务函数: {func_module}.{func_name}")
+                print(f"位置参数: {args}")
+                print(f"关键字参数: {kwargs}")
+                return job
+            else:
+                print(f"任务 {job_id} 不存在")
+                return None
+        except Exception as e:
+            print(f"获取任务 {job_id} 失败: {e}")
+
 # 初始化调度器
 scheduler = DjangoTaskScheduler()
 scheduler.start()
+
+def user_stat_task(user_id, task_desc):
+    """用户统计任务函数"""
+    print(f"执行用户统计任务：用户ID={user_id}，任务描述={task_desc}")
