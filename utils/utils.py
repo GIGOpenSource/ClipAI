@@ -163,7 +163,7 @@ class LoggingUtil:
         self.logger.info(message)
 
 # 全局唯一实例（只初始化一次）
-logger = LoggingUtil()
+logger =  logging.getLogger('info')
 
 
 class ApiResponse(Response):
