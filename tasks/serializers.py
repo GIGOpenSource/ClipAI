@@ -53,9 +53,9 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     exec_nums = serializers.IntegerField(required=False, allow_null=True,
                                          help_text='执行次数（仅当 exec_type=fixed 时有效）')
     exec_id = serializers.CharField(required=False, allow_blank=True,
-                                      help_text='任务 ID（仅当 exec_type=fixed 时有效）')
-    exec_status = serializers.CharField(required=False, allow_blank=True,default="execting",
-                                             help_text='任务状态（仅当 exec_type=fixed 时有效）')
+                                    help_text='任务 ID（仅当 exec_type=fixed 时有效）')
+    exec_status = serializers.CharField(required=False, allow_blank=True, default="execting",
+                                        help_text='任务状态（仅当 exec_type=fixed 时有效）')
 
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
@@ -72,7 +72,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'select_status', 'task_timing_type','exec_type','exec_datetime','exec_nums','exec_id',
+            'created_at', 'select_status', 'task_timing_type', 'exec_type', 'exec_datetime', 'exec_nums', 'exec_id',
             'exec_status'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
@@ -132,6 +132,11 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         selectStatus = validated_data["select_status"]
         exec_type = validated_data.pop('exec_type', [])
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
+        prompt = validated_data["prompt"].id
+        if type(prompt) == int:
+            validated_data["text"] = None
+        if type(prompt) == str:
+            validated_data["prompt"] = None
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = self.context['request'].user
