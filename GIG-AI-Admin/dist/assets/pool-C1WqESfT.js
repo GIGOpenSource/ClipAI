@@ -1,1 +1,0 @@
-import{e as s,p as c,f as t,h as l}from"./index-BSm4yeEa.js";const p=o=>s("/social/pool-accounts/",{params:o}),n=o=>t("/social/pool-accounts/",o),u=(o,a)=>c(`/social/pool-accounts/${o}/`,a),i=o=>l(`/social/pool-accounts/${o}/`),d=o=>s(`/social/pool-accounts/${o}/`);export{d as a,n as c,i as d,p as g,u};
