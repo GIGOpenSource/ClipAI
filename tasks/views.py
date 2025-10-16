@@ -614,7 +614,6 @@ from datetime import datetime
 
 class TaskSchedulerView(APIView):
     """配置定时任务的接口"""
-
     @extend_schema(
         summary='创建每日定时任务',
         tags=['定时任务'],

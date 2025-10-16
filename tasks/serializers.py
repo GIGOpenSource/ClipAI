@@ -52,7 +52,10 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                                               help_text='固定执行时间（格式：YYYY-MM-DD HH:MM:SS）')
     exec_nums = serializers.IntegerField(required=False, allow_null=True,
                                          help_text='执行次数（仅当 exec_type=fixed 时有效）')
-
+    mission_id = serializers.CharField(required=False, allow_blank=True,
+                                      help_text='任务 ID（仅当 exec_type=fixed 时有效）')
+    mission_status = serializers.CharField(required=False, allow_blank=True,
+                                             help_text='任务状态（仅当 exec_type=fixed 时有效）')
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
         if obj.prompt:
@@ -152,25 +155,31 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             from utils.runTimingTask import run_timing_task
             from utils.autoTask import scheduler
             try:
+                job_id = ''
                 if exec_type == 'daily':
+                    job_id = f'mission_daily_{obj.id}'
                     scheduler.add_job(
                         func=run_timing_task,
                         trigger='daily',  # 明确指定具体小时
-                        job_id=f'mission_daily_{obj.id}',
+                        job_id=job_id,
                         nums=exec_nums,
                         args=(obj.id,),
                         kwargs={}
                     )
                 if exec_type == 'fixed':
+                    job_id = f'mission_fixed_{obj.id}'
                     scheduler.add_job(
                         func=run_timing_task,
                         trigger="fixed",
-                        job_id=f'mission_fixed_{obj.id}',
+                        job_id=job_id,
                         fixed_time=exec_datetime,
                         args=(obj.id,),
                         kwargs={},
                         replace_existing=True
                     )
+                res = SimpleTask.objects.get(id=obj.id)
+                res.mission_id = job_id
+                res.save()
             except Exception as e:
                 # 处理定时任务调度异常
                 pass
