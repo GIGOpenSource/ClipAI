@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
-from datetime import timedelta
+from datetime import timedelta,datetime
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,6 +28,16 @@ SECRET_KEY = 'django-insecure-#$#^ij10#p)s!cwf*c^@brw(y6c1p00il!nq0(6@@k9%_g61j!
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
+
+# 日志目录
+LOG_DIR = BASE_DIR / 'logs'
+
+CurrentDayLog = LOG_DIR / str(datetime.now())[:10]
+
+if not LOG_DIR.exists():
+    LOG_DIR.mkdir()
+if not CurrentDayLog.exists():
+    CurrentDayLog.mkdir()
 
 
 # Application definition
@@ -210,4 +220,81 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'clipai-local-cache',
     }
+}
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '[%(asctime)s][%(threadName)s:%(thread)d][task_id:%(name)s][%(filename)s:%(lineno)d]'
+                      '[%(levelname)s][%(message)s]'
+        },
+        'simple': {
+            'format': '[%(levelname)s][%(asctime)s][%(filename)s:%(lineno)d]%(message)s'
+        },
+        'collect': {
+            'format': '%(message)s'
+        }
+    },
+    'filters': {
+        'require_debug_true': {
+            '()': 'django.utils.log.RequireDebugTrue',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'filters': ['require_debug_true'],
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        },
+        'info': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': CurrentDayLog / f'{str(datetime.now())[:10]}_info.log',
+            'maxBytes': 1024 * 1024 * 50,
+            'backupCount': 3,
+            'formatter': 'standard',
+            'encoding': 'utf-8',
+        },
+        'TF': {
+            'level': 'INFO',
+            'class': 'logging.handlers.TimedRotatingFileHandler',
+            'filename': CurrentDayLog / f'{str(datetime.now())[:10]}_tf.log',
+            'backupCount': 3,
+            'when': 'D',
+            'formatter': 'standard',
+            'encoding': 'utf-8',
+        },
+        'error': {
+            'level': 'ERROR',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': CurrentDayLog / f'{str(datetime.now())[:10]}_error.log',
+            'maxBytes': 1024 * 1024 * 5,
+            'backupCount': 5,
+            'formatter': 'standard',
+            'encoding': 'utf-8',
+        },
+        'collect': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': CurrentDayLog / f'{str(datetime.now())[:10]}_collect.log',
+            'maxBytes': 1024 * 1024 * 50,
+            'backupCount': 5,
+            'formatter': 'collect',
+            'encoding': "utf-8"
+        }
+    },
+    'loggers': {
+        '': {
+            'handlers': ['info', 'console', 'error'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'collect': {
+            'handlers': ['console', 'collect'],
+            'level': 'INFO',
+        }
+    },
 }
