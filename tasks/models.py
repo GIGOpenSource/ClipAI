@@ -54,8 +54,10 @@ class SimpleTask(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     select_status = models.BooleanField()
     task_timing_type = models.CharField(max_length=30, help_text='定时任务类型')
-    mission_status = models.CharField(max_length=30, help_text='任务状态')
-    mission_id = models.CharField(max_length=255, help_text='定时任务id')
+    exec_status = models.CharField(max_length=30, help_text='任务状态')
+    exec_id = models.CharField(max_length=255, help_text='定时任务id')
+    exec_nums = models.IntegerField(default=0, help_text='执行次数')
+    exec_datetime = models.DateTimeField(null=True, blank=True,help_text='执行时间')
     class Meta:
         ordering = ['-updated_at']
 

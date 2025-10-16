@@ -162,7 +162,7 @@ class LoggingUtil:
             message = str(message)
         self.logger.info(message)
 
-# 全局唯一实例（只初始化一次）
+
 logger =  logging.getLogger('info')
 
 

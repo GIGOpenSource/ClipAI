@@ -52,10 +52,11 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                                               help_text='固定执行时间（格式：YYYY-MM-DD HH:MM:SS）')
     exec_nums = serializers.IntegerField(required=False, allow_null=True,
                                          help_text='执行次数（仅当 exec_type=fixed 时有效）')
-    mission_id = serializers.CharField(required=False, allow_blank=True,
+    exec_id = serializers.CharField(required=False, allow_blank=True,
                                       help_text='任务 ID（仅当 exec_type=fixed 时有效）')
-    mission_status = serializers.CharField(required=False, allow_blank=True,
+    exec_status = serializers.CharField(required=False, allow_blank=True,default="execting",
                                              help_text='任务状态（仅当 exec_type=fixed 时有效）')
+
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
         if obj.prompt:
@@ -71,8 +72,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'select_status', 'task_timing_type','exec_type','exec_datetime','exec_nums','mission_id',
-            'mission_status'
+            'created_at', 'select_status', 'task_timing_type','exec_type','exec_datetime','exec_nums','exec_id',
+            'exec_status'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
                             'created_at', 'updated_at']
@@ -128,10 +129,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
-        exec_type = validated_data.pop('exec_type', [])
-        exec_datetime = validated_data.pop('exec_datetime', [])
-        exec_nums = validated_data.pop('exec_nums', [])
         selectStatus = validated_data["select_status"]
+        exec_type = validated_data.pop('exec_type', [])
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
@@ -162,7 +161,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                         func=run_timing_task,
                         trigger='daily',  # 明确指定具体小时
                         job_id=job_id,
-                        nums=exec_nums,
+                        nums=validated_data['exec_nums'],
                         args=(obj.id,),
                         kwargs={}
                     )
@@ -172,7 +171,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                         func=run_timing_task,
                         trigger="fixed",
                         job_id=job_id,
-                        fixed_time=exec_datetime,
+                        fixed_time=validated_data['exec_datetime'],
                         args=(obj.id,),
                         kwargs={},
                         replace_existing=True
