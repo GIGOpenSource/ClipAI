@@ -206,7 +206,6 @@ class TaskLogView(APIView):
     create=extend_schema(summary='创建简单任务（定时/非定时）',
                          description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
     update=extend_schema(summary='更新简单任务'),
-
     partial_update=extend_schema(summary='部分更新简单任务'),
     destroy=extend_schema(summary='删除简单任务')
 )
@@ -732,8 +731,6 @@ class TaskSchedulerView(APIView):
         }
     )
     def post(self, request, task_id):
-
-
         try:
             method = request.data.get('method')
             if not task_id or not method:
@@ -749,17 +746,25 @@ class TaskSchedulerView(APIView):
             task = TasksSimpletask.objects.get(id=task_id)
             job_id = task.exec_id  # 直接获取 exec_id 字段
 
-            method_map[method](job_id)
-            method_map[method](job_id)
+            if method == 'pause':
+                # 暂停任务：更新状态为 paused
+                task.exec_status = "paused"
+            elif method == 'resume':
+                task.exec_status="execting"
+            response = method_map[method](job_id)
+            task.save()
 
+            return response
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
     def pause_job(self, job_id):
         scheduler.pause_job(job_id)
+        return ApiResponse(message=f'任务已暂停', status=200)
 
     def resume_job(self, job_id):
         scheduler.resume_job(job_id)
+        return ApiResponse(message=f'任务已继续', status=200)
 
     def get_job(self, job_id):
         scheduler.get(job_id)

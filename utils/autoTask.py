@@ -6,7 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from django_apscheduler.jobstores import DjangoJobStore
 from django.utils import timezone
 
-from utils.utils import logger
+from utils.utils import logger, ApiResponse
 
 fixed_exec_time = timezone.make_aware(
     datetime(2025, 10, 16, 10, 42, 0)  # 年、月、日、时、分、秒
