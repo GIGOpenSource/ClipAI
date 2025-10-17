@@ -1,6 +1,7 @@
 from django.contrib.messages.context_processors import messages
 from django.db.models import Max
 from drf_spectacular.types import OpenApiTypes
+from oauthlib.uri_validate import query
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -610,45 +611,107 @@ class GlobalTagsView(APIView):
 from django.http import JsonResponse
 
 from datetime import datetime
+#
+#
+# class TaskSchedulerView(APIView):
+#     """配置定时任务的接口"""
+#
+#     @extend_schema(
+#         summary='创建每日定时任务',
+#         tags=['任务执行（定时/非定时）'],
+#         description='创建一个每天指定时间执行的定时任务',
+#         request={
+#             'application/json': {
+#                 'type': 'object',
+#                 'properties': {
+#                     'hour': {
+#                         'type': 'integer',
+#                         'description': '执行小时 (0-23)',
+#                         'example': 10
+#                     },
+#                     'minute': {
+#                         'type': 'integer',
+#                         'description': '执行分钟 (0-59)',
+#                         'example': 30
+#                     },
+#                     'repeat_times': {
+#                         'type': 'integer',
+#                         'description': '每次执行的重复次数',
+#                         'example': 3
+#                     }
+#                 },
+#                 'required': ['hour']
+#             }
+#         },
+#         responses={
+#             200: {
+#                 'description': '任务创建成功',
+#                 'content': {
+#                     'application/json': {
+#                         'example': {
+#                             'status': 'success',
+#                             'message': '定时任务已配置'
+#                         }
+#                     }
+#                 }
+#             },
+#             400: {
+#                 'description': '请求参数错误',
+#                 'content': {
+#                     'application/json': {
+#                         'example': {
+#                             'status': 'error',
+#                             'message': '错误信息'
+#                         }
+#                     }
+#                 }
+#             }
+#         }
+#     )
+#     def post(self, request):
+#         # 示例：配置每天10:30执行3次任务
+#         try:
+#
+#             hour = request.data.get('hour', 10)
+#             minute = request.data.get('minute', 30)
+#             repeat_times = request.data.get('repeat_times', 3)
+#
+#             # 调用autoTask中的方法创建定时任务
+#             # schedule_daily_task(hour=hour, minute=minute, repeat_times=repeat_times)
+#             return JsonResponse({'status': 'success', 'message': '定时任务已配置'})
+#         except Exception as e:
+#             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
 
+from utils.autoTask import scheduler
+
+@extend_schema(tags=['任务执行（定时/非定时）'])
 class TaskSchedulerView(APIView):
-    """配置定时任务的接口"""
     @extend_schema(
-        summary='创建每日定时任务',
-        tags=['定时任务'],
-        description='创建一个每天指定时间执行的定时任务',
+        summary='任务的暂停、恢复、删除、获取等操作',
+        description='对指定任务执行暂停、恢复、删除、获取等操作',
         request={
             'application/json': {
                 'type': 'object',
                 'properties': {
-                    'hour': {
-                        'type': 'integer',
-                        'description': '执行小时 (0-23)',
-                        'example': 10
-                    },
-                    'minute': {
-                        'type': 'integer',
-                        'description': '执行分钟 (0-59)',
-                        'example': 30
-                    },
-                    'repeat_times': {
-                        'type': 'integer',
-                        'description': '每次执行的重复次数',
-                        'example': 3
+                    'method': {
+                        'type': 'string',
+                        'description': '操作类型：pause/resume/delete/get',
+                        'enum': ['pause', 'resume', 'delete', 'get'],
+                        'example': 'pause'
                     }
                 },
-                'required': ['hour']
+                'required': ['method']
             }
         },
         responses={
             200: {
-                'description': '任务创建成功',
+                'description': '操作成功',
                 'content': {
                     'application/json': {
                         'example': {
                             'status': 'success',
-                            'message': '定时任务已配置'
+                            'message': '任务已暂停'
                         }
                     }
                 }
@@ -659,37 +722,45 @@ class TaskSchedulerView(APIView):
                     'application/json': {
                         'example': {
                             'status': 'error',
-                            'message': '错误信息'
+                            'message': '无效的操作方法'
                         }
                     }
                 }
             }
         }
     )
-    def post(self, request):
-        # 示例：配置每天10:30执行3次任务
-        try:
-            hour = request.data.get('hour', 10)
-            minute = request.data.get('minute', 30)
-            repeat_times = request.data.get('repeat_times', 3)
+    def post(self, request, task_id):
 
-            # 调用autoTask中的方法创建定时任务
-            # schedule_daily_task(hour=hour, minute=minute, repeat_times=repeat_times)
-            return JsonResponse({'status': 'success', 'message': '定时任务已配置'})
+
+        try:
+            method = request.data.get('method')
+            if not task_id or not method:
+                return ApiResponse(code=400, msg='任务ID和操作方法是必需的')
+
+            method_map = {
+                'pause': self.pause_job,
+                'resume': self.resume_job,
+                'get': self.get_job,
+                'delete': self.delete_job
+            }
+            # job_id = TasksSimpletask.objects.filter(id=request.data.get('task_id')).exec_id
+            task = TasksSimpletask.objects.get(id=task_id)
+            job_id = task.exec_id  # 直接获取 exec_id 字段
+
+            method_map[method](job_id)
+            method_map[method](job_id)
+
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
 
-# def scheduler_test():
-#     print('定时任务触发')
-#
-# from apscheduler.schedulers.background import BackgroundScheduler
-# scheduler = BackgroundScheduler()
-# try:
-#     # 添加定时任务，第一个参数为需要定时执行的任务，'cron'定时任务类型，每天0点，30分执行一次，任务id为test。
-# 	scheduler.add_job(scheduler_test, 'cron', hour=11, minute=35, id='test', replace_existing=True,timezone='Asia/Shanghai')
-#     # 启动定时任务
-# 	scheduler.start()
-# except Exception as e:
-#     print(e)
-#     # 停止定时任务
-#     scheduler.shutdown()
+    def pause_job(self, job_id):
+        scheduler.pause_job(job_id)
+
+    def resume_job(self, job_id):
+        scheduler.resume_job(job_id)
+
+    def get_job(self, job_id):
+        scheduler.get(job_id)
+
+    def delete_job(self, job_id):
+        scheduler.delete_job(job_id)

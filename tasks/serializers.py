@@ -130,7 +130,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
-        exec_type = validated_data.pop('exec_type', [])
+        exec_type = validated_data.pop('exec_type')
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
         prompt = validated_data["prompt"].id
         if type(prompt) == int:
@@ -155,13 +155,14 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         if selectStatus is False:
             datas = datas.filter(~Q(id__in=accounts_data_ids))
         accounts_data = [item["id"] for item in datas]
+        job_id = obj.id
         if task_timing_type == "timing":
             from utils.runTimingTask import run_timing_task
             from utils.autoTask import scheduler
             try:
-                job_id = ''
                 if exec_type == 'daily':
                     job_id = f'mission_daily_{obj.id}'
+                    print("daily", job_id)
                     scheduler.add_job(
                         func=run_timing_task,
                         trigger='daily',  # 明确指定具体小时
@@ -172,6 +173,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                     )
                 if exec_type == 'fixed':
                     job_id = f'mission_fixed_{obj.id}'
+                    print("fixed", job_id)
                     scheduler.add_job(
                         func=run_timing_task,
                         trigger="fixed",
@@ -182,7 +184,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                         replace_existing=True
                     )
                 res = SimpleTask.objects.get(id=obj.id)
-                res.mission_id = job_id
+                res.exec_id = job_id
                 res.save()
             except Exception as e:
                 # 处理定时任务调度异常
@@ -282,4 +284,6 @@ class SimpleTaskRunDetailSerializer(serializers.ModelSerializer):
         model = TasksSimpletaskrun
         fields = ['task_language','task_remark','task_tags','task_mentions','task_name','id', 'provider', 'type', 'text',  'owner_id', 'task_id', 'used_prompt',
                  'ai_model','ai_provider','external_id','error_code','error_message','created_at','account','owner']
+
+
 
