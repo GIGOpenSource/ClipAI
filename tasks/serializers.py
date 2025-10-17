@@ -53,7 +53,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     exec_status = serializers.CharField(required=False, allow_blank=True, default="execting",
                                         help_text='任务状态（仅当 exec_type=fixed 时有效）')
     exec_prom_text = serializers.BooleanField(help_text='是否使用 prompt 提示语')
-    prompt_text = serializers.CharField(required=False, allow_blank=True,
+    prompt_text = serializers.CharField(required=False, allow_blank=True, allow_null=True,
                                         help_text='使用 prompt 提示语时的内容（仅当 exec_prom_text=true 时有效）')
 
     def get_prompt_name(self, obj):
@@ -267,7 +267,8 @@ class SimpleTaskRunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TasksSimpletask
-        fields = ['id', 'provider', 'type', 'text', 'created_at', 'owner_id', 'task_id', 'prompt_name','mentions','task_remark','tags','language',
+        fields = ['id', 'provider', 'type', 'text', 'created_at', 'owner_id', 'task_id', 'prompt_name', 'mentions',
+                  'task_remark', 'tags', 'language',
                   'task_provider', 'owner_name', 'prompt_id', 'account_count', 'success_count', 'fail_count']
 
 
@@ -277,8 +278,10 @@ class SimpleTaskRunDetailSerializer(serializers.ModelSerializer):
     task_tags = serializers.CharField(source='task.tags', read_only=True)
     task_language = serializers.CharField(source='task.language', read_only=True)
     task_remark = serializers.CharField(source='task.task_remark', read_only=True)
+
     class Meta:
         model = TasksSimpletaskrun
-        fields = ['task_language','task_remark','task_tags','task_mentions','task_name','id', 'provider', 'type', 'text',  'owner_id', 'task_id', 'used_prompt',
-                 'ai_model','ai_provider','external_id','error_code','error_message','created_at','account','owner']
-
+        fields = ['task_language', 'task_remark', 'task_tags', 'task_mentions', 'task_name', 'id', 'provider', 'type',
+                  'text', 'owner_id', 'task_id', 'used_prompt',
+                  'ai_model', 'ai_provider', 'external_id', 'error_code', 'error_message', 'created_at', 'account',
+                  'owner']
