@@ -197,95 +197,96 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         return obj
 
 
-def update(self, instance, validated_data):
-    isSuper = validated_data["owner"].is_superuser
-    if isSuper:
-        datas = SocialPoolaccount.objects.filter(status="active").values('id', 'name')
-    else:
-        ownerId = validated_data["owner"].id
-        datas = SocialPoolaccount.objects.filter(owner_id=ownerId, provider=validated_data["provider"],
-                                                 status="active").values('id', 'name')
-    accounts_data = validated_data.pop('selected_accounts', None)
-    selectStatus = validated_data["select_status"]
-    exec_prom_text = validated_data['exec_prom_text']
-    prompt_text = validated_data.pop('prompt_text', [])
-    if exec_prom_text is False:
-        validated_data["text"] = prompt_text
-    accounts_list = [item["id"] for item in accounts_data]
-    if selectStatus is True:
-        if len(accounts_list) != 0:
-            datas = datas.filter(Q(id__in=accounts_list))
-        accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
-    if selectStatus is False:
-        datas = datas.filter(~Q(id__in=accounts_list))
-        accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
-    obj = super().update(instance, validated_data)
-
-    # 正确处理 selected_accounts 关联
-    if accounts_data is not None:
-        if accounts_data:
-            # 从嵌套数据中提取实际的 PoolAccount 对象
-            account_objects = []
-            for account in accounts_data:
-                if isinstance(account, dict) and 'id' in account:
-                    try:
-                        account_obj = PoolAccount.objects.get(id=account['id'])
-                        account_objects.append(account_obj)
-                    except PoolAccount.DoesNotExist:
-                        raise serializers.ValidationError(f"账户 ID {account['id']} 不存在")
-                elif isinstance(account, int):
-                    try:
-                        account_obj = PoolAccount.objects.get(id=account)
-                        account_objects.append(account_obj)
-                    except PoolAccount.DoesNotExist:
-                        raise serializers.ValidationError(f"账户 ID {account} 不存在")
-                elif hasattr(account, 'id'):  # 如果已经是模型实例
-                    account_objects.append(account)
-
-            # 设置多对多关系
-            obj.selected_accounts.set(account_objects)
+    def update(self, instance, validated_data):
+        isSuper = validated_data["owner"].is_superuser
+        if isSuper:
+            datas = SocialPoolaccount.objects.filter(status="active").values('id', 'name')
         else:
-            # 如果传递空数组，清空所有关联
-            obj.selected_accounts.clear()
-    exec_type = validated_data["exec_type"]
-    task_timing_type = validated_data['task_timing_type']
-    if task_timing_type == "timing":
-        from utils.runTimingTask import run_timing_task
-        from utils.autoTask import scheduler
-        try:
-            job_id = ''
-            if exec_type not in 'fixed':
-                job_id = f'mission_daily_{obj.id}'
-                scheduler.add_job(
-                    func=run_timing_task,
-                    trigger=exec_type,  # 明确指定具体小时
-                    job_id=job_id,
-                    nums=validated_data['exec_nums'],
-                    args=(obj.id,),
-                    kwargs={}
-                )
-            if exec_type == 'fixed':
-                job_id = f'mission_fixed_{obj.id}'
-                scheduler.add_job(
-                    func=run_timing_task,
-                    trigger="fixed",
-                    job_id=job_id,
-                    fixed_time=validated_data['exec_datetime'],
-                    args=(obj.id,),
-                    kwargs={},
-                    replace_existing=True
-                )
-            res = SimpleTask.objects.get(id=obj.id)
-            res.exec_id = job_id
-            res.save()
-        except Exception as e:
-            # 处理定时任务调度异常
-            pass
-    else:
-        # 即时任务先保存再 调用启动
-        print("1")
+            ownerId = validated_data["owner"].id
+            datas = SocialPoolaccount.objects.filter(owner_id=ownerId, provider=validated_data["provider"],
+                                                     status="active").values('id', 'name')
+        accounts_data = validated_data.pop('selected_accounts', None)
+        validated_data["exec_type"]= validated_data.get("exec_type", None)
+        selectStatus = validated_data["select_status"]
+        exec_prom_text = validated_data['exec_prom_text']
+        prompt_text = validated_data.pop('prompt_text', [])
+        if exec_prom_text is False:
+            validated_data["text"] = prompt_text
+        accounts_list = [item["id"] for item in accounts_data]
+        if selectStatus is True:
+            if len(accounts_list) != 0:
+                datas = datas.filter(Q(id__in=accounts_list))
+            accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
+        if selectStatus is False:
+            datas = datas.filter(~Q(id__in=accounts_list))
+            accounts_data = [{"id": item["id"], "name": item["name"]} for item in datas]
+        obj = super().update(instance, validated_data)
 
-    return obj
+        # 正确处理 selected_accounts 关联
+        if accounts_data is not None:
+            if accounts_data:
+                # 从嵌套数据中提取实际的 PoolAccount 对象
+                account_objects = []
+                for account in accounts_data:
+                    if isinstance(account, dict) and 'id' in account:
+                        try:
+                            account_obj = PoolAccount.objects.get(id=account['id'])
+                            account_objects.append(account_obj)
+                        except PoolAccount.DoesNotExist:
+                            raise serializers.ValidationError(f"账户 ID {account['id']} 不存在")
+                    elif isinstance(account, int):
+                        try:
+                            account_obj = PoolAccount.objects.get(id=account)
+                            account_objects.append(account_obj)
+                        except PoolAccount.DoesNotExist:
+                            raise serializers.ValidationError(f"账户 ID {account} 不存在")
+                    elif hasattr(account, 'id'):  # 如果已经是模型实例
+                        account_objects.append(account)
+
+                # 设置多对多关系
+                obj.selected_accounts.set(account_objects)
+            else:
+                # 如果传递空数组，清空所有关联
+                obj.selected_accounts.clear()
+        exec_type = validated_data["exec_type"]
+        task_timing_type = validated_data['task_timing_type']
+        if task_timing_type == "timing":
+            from utils.runTimingTask import run_timing_task
+            from utils.autoTask import scheduler
+            try:
+                job_id = ''
+                if exec_type not in 'fixed':
+                    job_id = f'mission_daily_{obj.id}'
+                    scheduler.add_job(
+                        func=run_timing_task,
+                        trigger=exec_type,  # 明确指定具体小时
+                        job_id=job_id,
+                        nums=validated_data['exec_nums'],
+                        args=(obj.id,),
+                        kwargs={}
+                    )
+                if exec_type == 'fixed':
+                    job_id = f'mission_fixed_{obj.id}'
+                    scheduler.add_job(
+                        func=run_timing_task,
+                        trigger="fixed",
+                        job_id=job_id,
+                        fixed_time=validated_data['exec_datetime'],
+                        args=(obj.id,),
+                        kwargs={},
+                        replace_existing=True
+                    )
+                res = SimpleTask.objects.get(id=obj.id)
+                res.exec_id = job_id
+                res.save()
+            except Exception as e:
+                # 处理定时任务调度异常
+                pass
+        else:
+            # 即时任务先保存再 调用启动
+            print("1")
+
+        return obj
 
 
 class SimpleTaskRunSerializer(serializers.ModelSerializer):
