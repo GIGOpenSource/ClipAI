@@ -70,6 +70,50 @@ class DjangoTaskScheduler:
                     kwargs=kwargs.get('kwargs', {})
                 )
                 logger.info(f"每日随机任务 {job_id} 添加成功，每日执行{nums}次，时间点：{random_hours}时")
+            elif trigger == "weekly":
+                """
+                每周执行N次
+                """
+                if nums is None or not (1 <= nums <= 7):
+                    raise ValueError("当trigger为'weekly'时，nums必须为1~7之间的整数")
+                # 获取一周中的N个随机星期几（例如：周一、周三、周五）
+                days_of_week = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+                selected_days = random.sample(days_of_week, nums)
+                selected_days.sort()
+
+                self.scheduler.add_job(
+                    func,
+                    trigger='cron',
+                    id=job_id,
+                    day_of_week=','.join(selected_days),
+                    hour=kwargs.get('hour', 0),
+                    minute=kwargs.get('minute', 0),
+                    replace_existing=replace_existing,
+                    args=kwargs.get('args', ()),
+                    kwargs=kwargs.get('kwargs', {})
+                )
+                logger.info(f"每周任务 {job_id} 添加成功，每周在{selected_days}执行")
+            elif trigger == "monthly":
+                """
+                每月执行N次
+                """
+                if nums is None or not (1 <= nums <= 31):
+                    raise ValueError("当trigger为'monthly'时，nums必须为1~31之间的整数")
+                # 获取一个月中的N个随机日期（例如：1号、15号、28号）
+                selected_dates = random.sample(range(1, 32), nums)
+                selected_dates.sort()
+                self.scheduler.add_job(
+                    func,
+                    trigger='cron',
+                    id=job_id,
+                    day=','.join(map(str, selected_dates)),
+                    hour=kwargs.get('hour', 0),
+                    minute=kwargs.get('minute', 0),
+                    replace_existing=replace_existing,
+                    args=kwargs.get('args', ()),
+                    kwargs=kwargs.get('kwargs', {})
+                )
+                logger.info(f"每月任务 {job_id} 添加成功，每月在{selected_dates}号执行")
             if trigger == "fixed":
                 """
                 每fixed 

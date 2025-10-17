@@ -129,7 +129,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
-        exec_type = validated_data.pop('exec_type', [])
+        exec_type = validated_data["exec_type"]
         prompt_text = validated_data.pop('prompt_text', [])
         exec_prom_text = validated_data['exec_prom_text']
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
@@ -159,11 +159,11 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             from utils.autoTask import scheduler
             try:
                 job_id = ''
-                if exec_type == 'daily':
+                if exec_type not in 'fixed':
                     job_id = f'mission_daily_{obj.id}'
                     scheduler.add_job(
                         func=run_timing_task,
-                        trigger='daily',  # 明确指定具体小时
+                        trigger=exec_type,  # 明确指定具体小时
                         job_id=job_id,
                         nums=validated_data['exec_nums'],
                         args=(obj.id,),
@@ -243,6 +243,43 @@ def update(self, instance, validated_data):
         else:
             # 如果传递空数组，清空所有关联
             obj.selected_accounts.clear()
+    exec_type = validated_data["exec_type"]
+    task_timing_type = validated_data['task_timing_type']
+    if task_timing_type == "timing":
+        from utils.runTimingTask import run_timing_task
+        from utils.autoTask import scheduler
+        try:
+            job_id = ''
+            if exec_type not in 'fixed':
+                job_id = f'mission_daily_{obj.id}'
+                scheduler.add_job(
+                    func=run_timing_task,
+                    trigger=exec_type,  # 明确指定具体小时
+                    job_id=job_id,
+                    nums=validated_data['exec_nums'],
+                    args=(obj.id,),
+                    kwargs={}
+                )
+            if exec_type == 'fixed':
+                job_id = f'mission_fixed_{obj.id}'
+                scheduler.add_job(
+                    func=run_timing_task,
+                    trigger="fixed",
+                    job_id=job_id,
+                    fixed_time=validated_data['exec_datetime'],
+                    args=(obj.id,),
+                    kwargs={},
+                    replace_existing=True
+                )
+            res = SimpleTask.objects.get(id=obj.id)
+            res.exec_id = job_id
+            res.save()
+        except Exception as e:
+            # 处理定时任务调度异常
+            pass
+    else:
+        # 即时任务先保存再 调用启动
+        print("1")
 
     return obj
 
