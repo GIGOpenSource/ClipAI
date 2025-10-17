@@ -203,6 +203,8 @@ class TaskLogView(APIView):
 @extend_schema(tags=["任务执行（定时/非定时）"])
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表'),
+        parameters=[OpenApiParameter(name='exec_status', description='执行状态'),
+                    OpenApiParameter(name='provider', description='平台筛选'),],
     retrieve=extend_schema(summary='简单任务详情'),
     create=extend_schema(summary='创建简单任务（定时/非定时）',
                          description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
@@ -213,8 +215,22 @@ class TaskLogView(APIView):
 class SimpleTaskViewSet(viewsets.ModelViewSet):
     queryset = SimpleTask.objects.all().order_by('-created_at')
     serializer_class = SimpleTaskSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
-
+    filterset_fields = ['exec_status','provider']
+    search_fields = ['followee_nickname']
+    def list(self, request, *args, **kwargs):
+        # 获取过滤后的查询集
+        queryset = self.filter_queryset(self.get_queryset())
+        # 获取分页器实例
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            # 使用自定义分页响应
+            return self.get_paginated_response(serializer.data)
+        # 如果没有分页，返回普通响应
+        serializer = self.get_serializer(queryset, many=True)
+        return ApiResponse(serializer.data)
     def get_queryset(self):
         qs = super().get_queryset()
         qs = qs.select_related('prompt', 'owner').prefetch_related('selected_accounts')
