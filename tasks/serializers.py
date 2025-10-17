@@ -129,7 +129,6 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
-        exec_type = validated_data.pop('exec_type')
         exec_type = validated_data.pop('exec_type', [])
         prompt_text = validated_data.pop('prompt_text', [])
         exec_prom_text = validated_data['exec_prom_text']
