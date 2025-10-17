@@ -363,6 +363,11 @@ class TasksSimpletask(models.Model):
     task_remark = models.CharField(max_length=255)
     select_status = models.BooleanField(blank=True, null=True)
     task_timing_type = models.CharField(max_length=30, blank=True, null=True, db_comment='是否定时任务')
+    exec_status = models.CharField(max_length=30, help_text='任务状态')
+    exec_id = models.CharField(max_length=255, help_text='定时任务id')
+    exec_nums = models.IntegerField(default=0, help_text='执行次数')
+    exec_datetime = models.DateTimeField(null=True, blank=True, help_text='执行时间')
+    exec_prom_text = models.BooleanField(default=False, help_text='使用prompt生成文案')
 
     class Meta:
         managed = False

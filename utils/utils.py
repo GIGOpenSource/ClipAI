@@ -8,8 +8,7 @@ import os
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from rest_framework.response import Response
-from models.models import TasksSimpletask as Task,PromptsPromptconfig as Prompts
-
+from models.models import TasksSimpletask as Task, PromptsPromptconfig as Prompts
 
 lang_map = {
     'auto': 'Auto',
@@ -25,19 +24,23 @@ lang_map = {
 
 def generate_message(task: Task) -> List[Dict[str, str]]:
     lang_name = lang_map.get(task.language, 'Auto')
-    prompt_text = Prompts.objects.get(id=task.prompt_id).content
-    logger.info(prompt_text)
+
+    isPrompt = task.exec_prom_text
+    if isPrompt:
+        prompt_text = Prompts.objects.get(id=task.prompt_id).content
+    else:
+        prompt_text = task.text
     if task.language == "zh" or task.language == "auto":
-        base_sys = (getattr(task.prompt, 'content', None) or '你是一个社交媒体助理，请生成简短中文内容。')
+        base_sys = '你是一个社交媒体助理，请生成简短中文内容。'
         messages = [
-            {'role': 'system', 'content': base_sys},
+            {'role': 'system', 'content': base_sys + f',{prompt_text}'},
             {'role': 'user',
-                 'content': f"请生成适合 {task.provider} 的{'回复评论' if task.type == 'reply_comment' else '发帖'}文案。"},
+             'content': f"请生成适合 {task.provider} 的{'回复评论' if task.type == 'reply_comment' else '发帖'}文案。"},
         ]
     elif task.language == "en":
-        base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.'
+        base_sys = 'You are a social media copywriter. Generate concise, safe English content suitable for Twitter.' + f',{prompt_text}'
         messages = [
-            {'role': 'system', 'content': base_sys},
+            {'role': 'system', 'content': base_sys + f',{prompt_text}'},
             {'role': 'system',
              'content': 'Target language: English. Reply ONLY in English. Keep it short and friendly.'},
             {'role': 'user', 'content': f"Please write a short post for {task.provider}."},
@@ -45,7 +48,7 @@ def generate_message(task: Task) -> List[Dict[str, str]]:
     else:
         base_sys = f'You are a social media copywriter. Generate concise, safe {lang_name} content suitable for Twitter.'
         messages = [
-            {'role': 'system', 'content': base_sys},
+            {'role': 'system', 'content': base_sys + f',{prompt_text}'},
             {'role': 'system',
              'content': f"Target language: {lang_name}. Reply ONLY in {lang_name}. Keep it short and friendly."},
             {'role': 'user', 'content': f"Please write a short post for {task.provider}."},
@@ -165,7 +168,7 @@ class LoggingUtil:
         self.logger.info(message)
 
 
-logger =  logging.getLogger('info')
+logger = logging.getLogger('info')
 
 
 class ApiResponse(Response):
@@ -231,5 +234,3 @@ class CustomPagination(PageNumberPagination):
                 return []
             # 如果是其他异常，重新抛出
             raise e
-
-
