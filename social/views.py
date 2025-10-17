@@ -39,7 +39,7 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         getname_q = self.request.query_params.get('name')
         remark_q = self.request.query_params.get('remark')  # 添加备注查询参数
         remark_exact = self.request.query_params.get('remark_exact')  # 精确匹配查询参数
-        owner_id  = self.request.query_params.get('owner_id')
+        owner_id = self.request.query_params.get('owner_id')
         # 权限隔离：普通用户只能看到自己创建的账户
         if not user.is_staff:
             # 普通用户
@@ -211,6 +211,83 @@ class PoolAccountAllocation(APIView):
     permission_classes = [IsAuthenticated, IsStaffUser]
     serializer_class = PoolAccountSerializer
 
+    @extend_schema(
+        summary='获取账号池统计信息',
+        tags=['账号池'],
+        methods=['GET'],
+        parameters=[
+            OpenApiParameter(name='owner_id', type=int, description='用户ID，用于筛选特定用户的账号统计', required=False)
+        ],
+        responses={
+            200: OpenApiResponse(
+                description='统计信息',
+                response={
+                    'type': 'object',
+                    'properties': {
+                        'total': {'type': 'integer', 'description': '总账号数'},
+                        'active': {'type': 'integer', 'description': '正常账号数'},
+                        'banned': {'type': 'integer', 'description': '封禁账号数'},
+                        'twitter': {'type': 'integer', 'description': 'Twitter账号数'},
+                        'facebook': {'type': 'integer', 'description': 'Facebook账号数'}
+                    }
+                }
+            )
+        }
+    )
+    def get(self, request):
+        """
+        获取账号池统计信息，包括总数、正常数、封禁数以及各平台分布情况
+        """
+        owner_id = request.query_params.get('owner_id')
+        queryset = PoolAccount.objects.all()
+        # 如果提供了 owner_id，则筛选特定用户的账号
+        if owner_id:
+            queryset = queryset.filter(owner_id=owner_id)
+        # 获取各种统计信息
+        total_accounts = queryset.count()
+        active_accounts = queryset.filter(status='active').count()
+        banned_accounts = queryset.filter(is_ban=True).count()
+        twitter_accounts = queryset.filter(provider='twitter').count()
+        facebook_accounts = queryset.filter(provider='facebook').count()
+
+        return Response({
+            'total': total_accounts,
+            'active': active_accounts,
+            'banned': banned_accounts,
+            'twitter': twitter_accounts,
+            'facebook': facebook_accounts
+        })
+
+    @extend_schema(
+        summary='为指定用户分配特定平台账号及指定数量',
+        tags=['账号池'],
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'provider': {
+                        'type': 'string',
+                        'enum': ['twitter', 'facebook'],
+                        'description': '平台类型'
+                    },
+                    'count': {
+                        'type': 'integer',
+                        'description': '分配账号数量'
+                    },
+                    'user_id': {
+                        'type': 'integer',
+                        'description': '目标用户ID'
+                    },
+                },
+                'required': ['provider', 'count', 'user_id']
+            }
+        },
+        responses={
+            200: OpenApiResponse(description='分配成功'),
+            400: OpenApiResponse(description='请求参数错误'),
+            404: OpenApiResponse(description='用户不存在')
+        }
+    )
     @extend_schema(
         summary='为指定用户分配特定平台账号及指定数量',
         tags=['账号池'],
