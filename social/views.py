@@ -45,11 +45,11 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         remark_exact = self.request.query_params.get('remark_exact')  # 精确匹配查询参数
         # 权限隔离：普通用户只能看到自己创建的账户
         if not user.is_staff:
-            if hasattr(self.queryset.model, 'owner'):
-                qs = qs.filter(owner=user)
-            else:
-                # 如果没有 owner 字段，普通用户只能看到状态为 active 的公共账户
-                qs = qs.filter(status='active')
+            # 普通用户
+            qs = qs.filter(owner=user)
+        if user.is_staff:
+            # 如果没有 owner 字段，普通用户只能看到状态为 active 的公共账户
+            qs = qs.filter(status='active')
         if provider:
             qs = qs.filter(provider=provider)
         if status_v:
