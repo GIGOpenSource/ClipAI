@@ -1,7 +1,5 @@
 from django.core.cache import cache
-import os
-import base64
-import hashlib
+import random
 import secrets
 import urllib.parse
 import requests
@@ -11,10 +9,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
 import tweepy
 from django.utils import timezone
-from django.http import HttpRequest
-
+from django.contrib.auth import get_user_model
 from rest_framework import viewsets
-from rest_framework.decorators import action
 from accounts.permissions import IsStaffUser
 from .models import PoolAccount
 from .serializers import PoolAccountSerializer
@@ -23,12 +19,12 @@ from .serializers import PoolAccountSerializer
 @extend_schema_view(
     list=extend_schema(summary='账号池列表',
                        ),
-                       retrieve=extend_schema(summary='账号池详情', tags=['账号池']),
-                       create=extend_schema(summary='创建账号池账号', tags=['账号池']),
-                       update=extend_schema(summary='更新账号池账号', tags=['账号池']),
-                       partial_update=extend_schema(summary='部分更新账号池账号', tags=['账号池']),
-                       destroy=extend_schema(summary='删除账号池账号', tags=['账号池'])
-                       )
+    retrieve=extend_schema(summary='账号池详情', tags=['账号池']),
+    create=extend_schema(summary='创建账号池账号', tags=['账号池']),
+    update=extend_schema(summary='更新账号池账号', tags=['账号池']),
+    partial_update=extend_schema(summary='部分更新账号池账号', tags=['账号池']),
+    destroy=extend_schema(summary='删除账号池账号', tags=['账号池'])
+)
 class PoolAccountViewSet(viewsets.ModelViewSet):
     queryset = PoolAccount.objects.all().order_by('-updated_at')
     serializer_class = PoolAccountSerializer
@@ -43,6 +39,7 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         getname_q = self.request.query_params.get('name')
         remark_q = self.request.query_params.get('remark')  # 添加备注查询参数
         remark_exact = self.request.query_params.get('remark_exact')  # 精确匹配查询参数
+        owner_id  = self.request.query_params.get('owner_id')
         # 权限隔离：普通用户只能看到自己创建的账户
         if not user.is_staff:
             # 普通用户
@@ -50,6 +47,8 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         if user.is_staff:
             # 如果没有 owner 字段，普通用户只能看到状态为 active 的公共账户
             qs = qs.filter(status='active')
+        if owner_id:
+            qs = qs.filter(owner_id=owner_id)
         if provider:
             qs = qs.filter(provider=provider)
         if status_v:
@@ -206,3 +205,98 @@ class PoolAccountFacebookOAuthCallback(APIView):
             acc.set_access_token(access_token)
         acc.save()
         return Response({'status': 'ok', 'pool_account_id': acc.id})
+
+
+class PoolAccountAllocation(APIView):
+    permission_classes = [IsAuthenticated, IsStaffUser]
+    serializer_class = PoolAccountSerializer
+
+    @extend_schema(
+        summary='为指定用户分配特定平台账号及指定数量',
+        tags=['账号池'],
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'provider': {
+                        'type': 'string',
+                        'enum': ['twitter', 'facebook'],
+                        'description': '平台类型'
+                    },
+                    'count': {
+                        'type': 'integer',
+                        'description': '分配账号数量'
+                    },
+                    'user_id': {
+                        'type': 'integer',
+                        'description': '目标用户ID'
+                    },
+                },
+                'required': ['provider', 'count', 'user_id']
+            }
+        },
+        responses={
+            200: OpenApiResponse(description='分配成功'),
+            400: OpenApiResponse(description='请求参数错误'),
+            404: OpenApiResponse(description='用户不存在')
+        }
+    )
+    def post(self, request):
+        """
+        为指定用户分配特定平台账号及指定数量
+        """
+        provider = request.data.get('provider')
+        count = request.data.get('count')
+        user_id = request.data.get('user_id')
+
+        # 参数验证
+        if not all([provider, count, user_id]):
+            return Response(
+                {'detail': '缺少必要参数: provider, count 或 user_id'},
+                status=400
+            )
+
+        if provider not in ['twitter', 'facebook']:
+            return Response(
+                {'detail': 'provider 仅支持 twitter 或 facebook'},
+                status=400
+            )
+
+        if not isinstance(count, int) or count <= 0:
+            return Response(
+                {'detail': 'count 必须为正整数'},
+                status=400
+            )
+        User = get_user_model()
+        try:
+            # 验证目标用户是否存在
+            target_user = User.objects.get(id=user_id)
+            # 查找符合条件的账号（当前用户拥有的指定平台账号）
+            accounts_qs = PoolAccount.objects.filter(
+                owner=request.user,
+                provider=provider,
+                status='active'
+            )
+            # 检查是否有足够的账号
+            available_count = accounts_qs.count()
+            if available_count < count:
+                return Response({
+                    'detail': f'可用账号不足，当前仅有 {available_count} 个符合条件的账号',
+                    'available_count': available_count
+                }, status=400)
+
+            # 随机选择指定数量的账号进行分配
+            selected_accounts = random.sample(list(accounts_qs), count)
+            # 执行分配（更新账号的所有者）
+            account_ids = [acc.id for acc in selected_accounts]
+            PoolAccount.objects.filter(id__in=account_ids).update(owner=target_user)
+            return Response({
+                'detail': f'成功为用户 {target_user.username} 分配 {count} 个 {provider} 账号',
+                'allocated_count': count,
+                'account_ids': account_ids
+            })
+
+        except User.DoesNotExist:
+            return Response({'detail': '目标用户不存在'}, status=404)
+        except Exception as e:
+            return Response({'detail': f'分配失败: {str(e)}'}, status=400)
