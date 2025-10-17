@@ -202,7 +202,7 @@ class TaskLogView(APIView):
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表'),
     retrieve=extend_schema(summary='简单任务详情'),
-    create=extend_schema(summary='创建简单任务（非定时）'),
+    create=extend_schema(summary='创建简单任务（定时/非定时）',description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
     update=extend_schema(summary='更新简单任务'),
 
     partial_update=extend_schema(summary='部分更新简单任务'),
