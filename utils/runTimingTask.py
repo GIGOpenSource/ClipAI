@@ -7,6 +7,8 @@
 @Date    ：2025/10/10 9:38
 @description : 定时任务执行模块
 """
+from distutils.log import fatal
+
 import requests
 import random
 import json
@@ -52,16 +54,15 @@ def process_account_task(account, task):
             logger.info(f"账号 {account.id} 已达每日使用上限")
             return
 
-    ai_qs = AIConfig.objects.filter(enabled=True).order_by('-priority', 'name')
-    for cfg in ai_qs:
-        # AI文本生成
-        text, ai_meta = generate_ai_text(task, cfg)
-        final_text = merge_text(task, text)
-        logger.info(f"为账号 {task.id} 生成的文本：{final_text}")
-        # 发布到平台
-        if task.provider == 'twitter':
-            send_to_twitter(account, task, cfg, final_text)
-
+    cfg = AIConfig.objects.filter(enabled=True).first()
+    # AI文本生成
+    text, ai_meta = generate_ai_text(task, cfg)
+    final_text = merge_text(task, text)
+    logger.info(f"为账号 {task.id} 生成的文本：{final_text}")
+    # 发布到平台
+    if task.provider == 'twitter':
+        flags = send_to_twitter(account, task, cfg, final_text)
+    return flags
 
 def generate_ai_text(task, cfg):
     """调用AI模型生成文本"""
@@ -75,7 +76,8 @@ def generate_ai_text(task, cfg):
             flag, text = cli.generateToDeepSeek(messages=messages)
         else:
             pass
-
+        text = text + "\n" + task.last_text
+        logger.info(f"调用模型成功，返回结果：{text}")
         if flag:
             ai_meta = {
                 'model': cfg.model,
@@ -101,7 +103,7 @@ def send_to_twitter(account, task, cfg, content):
         client = TwitterUnit(api_key, api_secret, at, ats)
 
         if task.type == 'post':
-            flag, resp = client.sendTwitter(content, int(account.id), task, cfg, userId=task.owner_id)
+            flags, resp = client.sendTwitter(content, int(account.id), task, cfg, userId=task.owner_id)
             logger.info(f"推文发送成功响应: {resp}")
             try:
                 record_success_run(
@@ -112,6 +114,7 @@ def send_to_twitter(account, task, cfg, content):
                 )
             except Exception as e:
                 logger.warn(f"记录运行状态失败: {e}")
+            return flags
     except Exception as e:
         logger.error(f"发送推文失败: {e}")
         raise Exception(f"发送推文失败: {str(e)}")

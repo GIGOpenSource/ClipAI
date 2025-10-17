@@ -10,6 +10,7 @@ from urllib3 import request
 
 from accounts.permissions import IsOwnerOrAdmin
 from models.models import TasksSimpletaskrun, TasksSimpletask
+from utils.runTimingTask import process_account_task
 from utils.utils import logger, ApiResponse, CustomPagination, generate_message, merge_text
 from .models import SimpleTask, SimpleTaskRun
 from .serializers import SimpleTaskSerializer, SimpleTaskRunSerializer, SimpleTaskRunDetailSerializer
@@ -202,7 +203,8 @@ class TaskLogView(APIView):
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表'),
     retrieve=extend_schema(summary='简单任务详情'),
-    create=extend_schema(summary='创建简单任务（定时/非定时）',description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
+    create=extend_schema(summary='创建简单任务（定时/非定时）',
+                         description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
     update=extend_schema(summary='更新简单任务'),
 
     partial_update=extend_schema(summary='部分更新简单任务'),
@@ -235,35 +237,6 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def run(self, request, pk=None):
         task = self.get_object()
-        # Helper: extract HTTP status code from exceptions
-        def _extract_status_code(exc):
-            try:
-                resp = getattr(exc, 'response', None)
-                if resp is not None:
-                    return getattr(resp, 'status_code', None) or getattr(resp, 'status', None)
-            except Exception:
-                return None
-            return None
-
-        # Helper: mark account status by code
-        def _mark_account_by_code(acc: PoolAccount, code: int | None):
-            try:
-                if code in (401, 403):
-                    acc.is_ban = True
-                    acc.status = 'banned'
-                    acc.save(update_fields=['is_ban', 'status'])
-                elif code == 429 or (code and 500 <= int(code) <= 599):
-                    acc.status = 'warn'
-                    acc.save(update_fields=['status'])
-                elif code:
-                    acc.status = 'unknown'
-                    acc.save(update_fields=['status'])
-            except Exception:
-                pass
-
-        # 获取 AI 配置（在循环外部获取一次）
-        ai_qs = AIConfig.objects.filter(enabled=True).order_by('-priority', 'name')
-
         try:
             selected_qs = task.selected_accounts.all()
             selected_ids = list(selected_qs.values_list('id', flat=True))
@@ -281,180 +254,14 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             except Exception:
                 pass
         # 平台执行
-        results = []
         ok_count = 0
         err_count = 0
         for acc in selected_qs:
-            user_text = (task.text or '').strip()
-            text = ''
-            ai_meta = {}
-            last_err = None
-            # 每日使用上限：limited 账号每天最多使用 2 次（无论成功与否）
-            try:
-                if getattr(acc, 'usage_policy', 'unlimited') == 'limited':
-                    today = timezone.now().date()
-                    used_today = SimpleTaskRun.objects.filter(account=acc, created_at__date=today).count()
-                    if used_today >= 2:
-                        results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'daily_limit_reached',
-                                        'used_today': used_today})
-                        continue
-            except Exception:
-                pass
-            should_generate_content = True  # 或者根据具体条件判断
-            if should_generate_content:
-                for cfg in ai_qs:
-                    try:
-                        cli = LargeModelUnit(cfg.model, cfg.api_key, cfg.base_url)
-                        messages = generate_message(task)
-                        if user_text:
-                            messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
-                        logger.info(f"为账号 {acc.id} 调用 chat_completion")
-                        if cfg.provider == "openai":
-                            flag, text = cli.generateToOpenAI(messages=messages)
-                        if cfg.provider == "deepseek":
-                            flag, text = cli.generateToDeepSeek(messages=messages)
-                        if flag:
-                            ai_meta = {
-                                'model': cfg.model,
-                                'provider': cfg.provider,
-                                # 'latency_ms': res.get('latency_ms'),
-                                # 'tokens': res.get('tokens'),
-                                # 'used_prompt': getattr(task.prompt, 'name', None),
-                                'final_text': text,
-                                'language': getattr(task, 'language', 'auto'),
-                            }
-                            break
-                    except Exception as e:
-                        last_err = str(e)
-                        logger.info(f"为账号 {acc.id} 调用模型失败：{last_err}")
-
-            # 如果没有生成文本但有用户文本，使用用户文本
-            if not text and user_text:
-                text = user_text
-                ai_meta = {
-                    'model': 'user_provided',
-                    'provider': 'user',
-                    # 'latency_ms': 0,
-                    # 'tokens': 0,
-                    # 'used_prompt': None,
-                    'final_text': text,
-                    'language': getattr(task, 'language', 'auto'),
-                }
-            # 如果仍然没有文本，跳过该账号
-            if not text:
-                results.append(
-                    {'account_id': acc.id, 'status': 'skipped', 'reason': 'no_content_generated', 'error': last_err})
+            flags = process_account_task(acc, task)
+            if flags:
+                ok_count += 1
+            else:
                 err_count += 1
-                continue
-
-            # 附加 tags/mentions（mentions 前缀 @）
-            final_text = text  # 使用为当前账号生成的文本
-            logger.info(f"为账号 {acc.id} 生成的文本：{final_text}")
-            final_text = merge_text(task, final_text)
-            try:
-                if task.provider == 'twitter':
-                    api_key = acc.api_key
-                    api_secret = acc.api_secret
-                    at = acc.get_access_token()
-                    ats = acc.get_access_token_secret()
-                    client = TwitterUnit(api_key, api_secret, at, ats)
-                    if task.type == 'post':
-                        flag, resp = client.sendTwitter(final_text, int(acc.id), task, cfg, userId=self.request.user.id)
-                        logger.info(f"推文发送成功响应: {resp}")
-                        """
-                        {'edit_history_tweet_ids': ['1976839557380554887'], 'id': '1976839557380554887', 'text': '测试'}
-                        """
-                        if flag:
-                            tweet_id = resp["id"]
-                            results.append(
-                                {'account_id': acc.id, 'status': 'ok', 'tweet_id': tweet_id,
-                                 'account_status': acc.status})
-                            ok_count += 1
-                        else:
-                            tweet_id = ""
-                            err_count += 1
-
-                        try:
-                            record_success_run(owner_id=task.owner_id, provider='twitter', task_type=task.type,
-                                               started_date=timezone.now().date())
-                        except Exception:
-                            pass
-            #     elif task.provider == 'facebook':
-            #         # 官方 Graph API（使用 requests 或 facebook-sdk；此处直接调用 Graph endpoint 简化）
-            #         import requests
-            #         page_token = acc.get_access_token()
-            #         page_id = (task.payload or {}).get('page_id')
-            #         if not page_token or not page_id:
-            #             results.append(
-            #                 {'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_page_token_or_page_id'})
-            #             continue
-            #         base = 'https://graph.facebook.com/v19.0'
-            #         if task.type == 'post':
-            #             r = requests.post(f"{base}/{page_id}/feed",
-            #                               data={'message': final_text, 'access_token': page_token}, timeout=20)
-            #             r.raise_for_status()
-            #             body = r.json()
-            #             results.append(
-            #                 {'account_id': acc.id, 'status': 'ok', 'post': body, 'account_status': acc.status})
-            #             ok_count += 1
-            #             try:
-            #                 SimpleTaskRun.objects.create(
-            #                     task=task, owner_id=task.owner_id, provider='facebook', type='post',
-            #                     account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-            #                     ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-            #                     ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-            #                     success=True, external_id=str((body.get('id') if isinstance(body, dict) else '') or ''),
-            #                     error_code='', error_message='',
-            #                 )
-            #             except Exception:
-            #                 pass
-            #             try:
-            #                 record_success_run(owner_id=task.owner_id, provider='facebook', task_type='post',
-            #                                    started_date=timezone.now().date())
-            #             except Exception:
-            #                 pass
-            #         elif task.type == 'reply_comment':
-            #             cid = (task.payload or {}).get('comment_id')
-            #             if not cid:
-            #                 results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'missing_comment_id'})
-            #                 continue
-            #             r = requests.post(f"{base}/{cid}/comments",
-            #                               data={'message': final_text, 'access_token': page_token}, timeout=20)
-            #             r.raise_for_status()
-            #             body = r.json()
-            #             results.append(
-            #                 {'account_id': acc.id, 'status': 'ok', 'reply': body, 'account_status': acc.status})
-            #             ok_count += 1
-            #             try:
-            #                 SimpleTaskRun.objects.create(
-            #                     task=task, owner_id=task.owner_id, provider='facebook', type='reply_comment',
-            #                     account=acc, text=final_text, used_prompt=(getattr(task.prompt, 'name', '') or ''),
-            #                     ai_model=(ai_meta.get('model') if isinstance(ai_meta, dict) else '') or '',
-            #                     ai_provider=(ai_meta.get('provider') if isinstance(ai_meta, dict) else '') or '',
-            #                     success=True, external_id=str((body.get('id') if isinstance(body, dict) else '') or ''),
-            #                     error_code='', error_message='',
-            #                 )
-            #             except Exception:
-            #                 pass
-            #             try:
-            #                 record_success_run(owner_id=task.owner_id, provider='facebook', task_type='reply_comment',
-            #                                    started_date=timezone.now().date())
-            #             except Exception:
-            #                 pass
-            #     else:
-            #         results.append({'account_id': acc.id, 'status': 'skipped', 'reason': 'unsupported_provider'})
-            except Exception as e:
-                code = _extract_status_code(e)
-                try:
-                    _mark_account_by_code(acc, code)
-                except Exception:
-                    pass
-                results.append({'account_id': acc.id, 'status': 'error', 'error': str(e), 'code': code,
-                                'account_status': acc.status})
-                err_count += 1
-                createTaskDetail(task.provider, text=final_text, sendType=task.type, task=task, aiConfig=cfg,
-                                 status=False, errorMessage=str(e), userId=self.request.user.id, robotId=acc.id,
-                                 articleId=None)
         # 运行完成：将仍为 active 的账号改回 inactive
         if selected_ids:
             try:
@@ -480,7 +287,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
             task.save(update_fields=['last_status', 'last_success', 'last_failed', 'last_run_at'])
         except Exception:
             pass
-        return Response({'status': 'ok', 'summary': {'ok': ok_count, 'error': err_count}, 'results': results})
+        return Response({'status': 'ok', 'summary': {'ok': ok_count, 'error': err_count}})
 
 
 from rest_framework.views import APIView
@@ -614,6 +421,7 @@ from datetime import datetime
 
 class TaskSchedulerView(APIView):
     """配置定时任务的接口"""
+
     @extend_schema(
         summary='创建每日定时任务',
         tags=['定时任务'],
