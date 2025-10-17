@@ -1,16 +1,12 @@
-from math import trunc
-
-from django.contrib.auth.models import User
 from rest_framework import serializers
-from urllib3 import request
 from django.db.models import Q
-
 from utils.autoTask import scheduler
-
+from utils.utils import logger
 from .models import SimpleTask, SimpleTaskRun
 from social.models import PoolAccount
 from prompts.models import PromptConfig
-from models.models import SocialPoolaccount, TasksSimpletaskrun, TasksSimpletask, TasksSimpletaskSelectedAccounts
+from models.models import SocialPoolaccount, TasksSimpletaskrun, TasksSimpletask, TasksSimpletaskSelectedAccounts, \
+    PromptsPromptconfig
 
 
 class SimpleTaskSerializer(serializers.ModelSerializer):
@@ -56,6 +52,9 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                                     help_text='任务 ID（仅当 exec_type=fixed 时有效）')
     exec_status = serializers.CharField(required=False, allow_blank=True, default="execting",
                                         help_text='任务状态（仅当 exec_type=fixed 时有效）')
+    exec_prom_text = serializers.BooleanField(help_text='是否使用 prompt 提示语')
+    prompt_text = serializers.CharField(required=False, allow_blank=True,
+                                        help_text='使用 prompt 提示语时的内容（仅当 exec_prom_text=true 时有效）')
 
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
@@ -73,7 +72,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
             'created_at', 'select_status', 'task_timing_type', 'exec_type', 'exec_datetime', 'exec_nums', 'exec_id',
-            'exec_status'
+            'exec_status', 'exec_prom_text', 'prompt_text'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
                             'created_at', 'updated_at']
@@ -131,12 +130,13 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
         exec_type = validated_data.pop('exec_type')
+        exec_type = validated_data.pop('exec_type', [])
+        prompt_text = validated_data.pop('prompt_text', [])
+        exec_prom_text = validated_data['exec_prom_text']
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
-        prompt = validated_data["prompt"].id
-        if type(prompt) == int:
-            validated_data["text"] = None
-        if type(prompt) == str:
-            validated_data["prompt"] = None
+        if exec_prom_text is False:
+            validated_data["text"] = prompt_text
+        logger.info(f"valdata\n:{validated_data}")
         if self.context.get('request') and self.context[
             'request'].user.is_authenticated and 'owner' not in validated_data:
             validated_data['owner'] = self.context['request'].user
@@ -155,14 +155,13 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         if selectStatus is False:
             datas = datas.filter(~Q(id__in=accounts_data_ids))
         accounts_data = [item["id"] for item in datas]
-        job_id = obj.id
         if task_timing_type == "timing":
             from utils.runTimingTask import run_timing_task
             from utils.autoTask import scheduler
             try:
+                job_id = ''
                 if exec_type == 'daily':
                     job_id = f'mission_daily_{obj.id}'
-                    print("daily", job_id)
                     scheduler.add_job(
                         func=run_timing_task,
                         trigger='daily',  # 明确指定具体小时
@@ -173,7 +172,6 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                     )
                 if exec_type == 'fixed':
                     job_id = f'mission_fixed_{obj.id}'
-                    print("fixed", job_id)
                     scheduler.add_job(
                         func=run_timing_task,
                         trigger="fixed",
@@ -284,6 +282,4 @@ class SimpleTaskRunDetailSerializer(serializers.ModelSerializer):
         model = TasksSimpletaskrun
         fields = ['task_language','task_remark','task_tags','task_mentions','task_name','id', 'provider', 'type', 'text',  'owner_id', 'task_id', 'used_prompt',
                  'ai_model','ai_provider','external_id','error_code','error_message','created_at','account','owner']
-
-
 

@@ -44,8 +44,6 @@ def run_timing_task(task_id):
 
 def process_account_task(account, task):
     """处理单个账号的任务执行"""
-    user_text = (task.text or '').strip()
-    text = ''
     # 使用限制检查
     if getattr(account, 'usage_policy', 'unlimited') == 'limited':
         today = datetime.now().date()
@@ -57,24 +55,20 @@ def process_account_task(account, task):
     ai_qs = AIConfig.objects.filter(enabled=True).order_by('-priority', 'name')
     for cfg in ai_qs:
         # AI文本生成
-        text, ai_meta = generate_ai_text(task, cfg, account, user_text)
+        text, ai_meta = generate_ai_text(task, cfg)
         final_text = merge_text(task, text)
-        logger.info(f"为账号 {account.id} 生成的文本：{final_text}")
+        logger.info(f"为账号 {task.id} 生成的文本：{final_text}")
         # 发布到平台
         if task.provider == 'twitter':
             send_to_twitter(account, task, cfg, final_text)
 
 
-def generate_ai_text(task, cfg, account, user_text):
+def generate_ai_text(task, cfg):
     """调用AI模型生成文本"""
     global text, flag
     try:
         cli = LargeModelUnit(cfg.model, cfg.api_key, cfg.base_url)
         messages = generate_message(task)
-        if user_text:
-            messages.append({'role': 'user', 'content': f"补充上下文：{user_text}"})
-        logger.info(f"为账号 {account.id} 调用 chat_completion")
-
         if cfg.provider == "openai":
             flag, text = cli.generateToOpenAI(messages=messages)
         elif cfg.provider == "deepseek":
@@ -93,7 +87,7 @@ def generate_ai_text(task, cfg, account, user_text):
             return text, ai_meta
     except Exception as e:
         print(f"调用模型失败：\n:${repr(e)}")
-        logger.warn(f"为账号 {account.id} 调用模型失败：{e}")
+        logger.warn(f"为账号 {task.id} 调用模型失败：{e}")
     return '', {}
 
 

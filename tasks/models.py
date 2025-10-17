@@ -43,7 +43,8 @@ class SimpleTask(models.Model):
     tags = models.JSONField(default=list, help_text='最多 5 个话题标签（字符串，不含#）')
     payload = models.JSONField(default=dict, help_text='平台相关附加参数，如 comment_id 等')
     selected_accounts = models.ManyToManyField(PoolAccount, blank=True, related_name='simple_tasks')
-    prompt = models.ForeignKey(PromptConfig, null=True, blank=True, on_delete=models.SET_NULL, related_name='tasks', help_text='执行所用提示词（系统内容）')
+    prompt = models.ForeignKey(PromptConfig, null=True, blank=True, on_delete=models.SET_NULL, related_name='tasks',
+                               help_text='执行所用提示词（系统内容）')
     last_status = models.CharField(max_length=16, default='new', help_text='new/success/partial/error')
     last_run_at = models.DateTimeField(null=True, blank=True)
     last_success = models.BooleanField(default=False, help_text='上次执行是否全部成功')
@@ -57,7 +58,9 @@ class SimpleTask(models.Model):
     exec_status = models.CharField(max_length=30, help_text='任务状态')
     exec_id = models.CharField(max_length=255, help_text='定时任务id')
     exec_nums = models.IntegerField(default=0, help_text='执行次数')
-    exec_datetime = models.DateTimeField(null=True, blank=True,help_text='执行时间')
+    exec_datetime = models.DateTimeField(null=True, blank=True, help_text='执行时间')
+    exec_prom_text = models.BooleanField(default=False, help_text='使用prompt生成文案')
+
     class Meta:
         ordering = ['-updated_at']
 
@@ -91,7 +94,6 @@ class SimpleTaskRun(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-
     class Meta:
         ordering = ['-created_at']
 
@@ -116,6 +118,7 @@ class TArticle(models.Model):
     class Meta:
         managed = False
         db_table = 't_article'
+
 
 class TArticleComments(models.Model):
     id = models.BigAutoField(primary_key=True)
