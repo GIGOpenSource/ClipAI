@@ -203,6 +203,10 @@ def update(self, instance, validated_data):
                                                  status="active").values('id', 'name')
     accounts_data = validated_data.pop('selected_accounts', None)
     selectStatus = validated_data["select_status"]
+    exec_prom_text = validated_data['exec_prom_text']
+    prompt_text = validated_data.pop('prompt_text', [])
+    if exec_prom_text is False:
+        validated_data["text"] = prompt_text
     accounts_list = [item["id"] for item in accounts_data]
     if selectStatus is True:
         if len(accounts_list) != 0:
