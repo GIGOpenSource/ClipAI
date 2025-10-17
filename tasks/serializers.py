@@ -267,11 +267,18 @@ class SimpleTaskRunSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TasksSimpletask
-        fields = ['id', 'provider', 'type', 'text', 'created_at', 'owner_id', 'task_id', 'prompt_name',
+        fields = ['id', 'provider', 'type', 'text', 'created_at', 'owner_id', 'task_id', 'prompt_name','mentions','task_remark','tags','language',
                   'task_provider', 'owner_name', 'prompt_id', 'account_count', 'success_count', 'fail_count']
 
 
 class SimpleTaskRunDetailSerializer(serializers.ModelSerializer):
+    task_name = serializers.CharField(source='task.name', read_only=True)
+    task_mentions = serializers.CharField(source='task.mentions', read_only=True)
+    task_tags = serializers.CharField(source='task.tags', read_only=True)
+    task_language = serializers.CharField(source='task.language', read_only=True)
+    task_remark = serializers.CharField(source='task.task_remark', read_only=True)
     class Meta:
         model = TasksSimpletaskrun
-        fields = '__all__'
+        fields = ['task_language','task_remark','task_tags','task_mentions','task_name','id', 'provider', 'type', 'text',  'owner_id', 'task_id', 'used_prompt',
+                 'ai_model','ai_provider','external_id','error_code','error_message','created_at','account','owner']
+

@@ -138,6 +138,7 @@ if POSTGRES_HOST:
             'USER': os.getenv('POSTGRES_USER', 'clipai'),
             'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'clipai'),
             'HOST': "192.168.77.222",
+            # 'HOST': "43.155.153.147",
             'PORT': os.getenv('POSTGRES_PORT', '5436'),
         }
     }
@@ -179,7 +180,7 @@ TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
-USE_TZ = True
+USE_TZ = False
 
 
 # Static files (CSS, JavaScript, Images)
