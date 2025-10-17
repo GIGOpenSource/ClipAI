@@ -60,7 +60,7 @@ class SimpleTask(models.Model):
     exec_nums = models.IntegerField(default=0, help_text='执行次数')
     exec_datetime = models.DateTimeField(null=True, blank=True, help_text='执行时间')
     exec_prom_text = models.BooleanField(default=False, help_text='使用prompt生成文案')
-
+    exec_type = models.CharField(max_length=30, help_text='任务执行类型')
     class Meta:
         ordering = ['-updated_at']
 
