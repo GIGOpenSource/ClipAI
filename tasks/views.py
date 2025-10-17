@@ -204,7 +204,9 @@ class TaskLogView(APIView):
 @extend_schema_view(
     list=extend_schema(summary='简单任务列表'),
         parameters=[OpenApiParameter(name='exec_status', description='执行状态'),
-                    OpenApiParameter(name='provider', description='平台筛选'),],
+                    OpenApiParameter(name='provider', description='平台筛选'),
+                    OpenApiParameter(name='type', description='类型筛选'),
+                    ],
     retrieve=extend_schema(summary='简单任务详情'),
     create=extend_schema(summary='创建简单任务（定时/非定时）',
                          description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
@@ -217,7 +219,7 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     serializer_class = SimpleTaskSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
-    filterset_fields = ['exec_status','provider']
+    filterset_fields = ['exec_status','provider','type']
     search_fields = ['followee_nickname']
     def list(self, request, *args, **kwargs):
         # 获取过滤后的查询集
