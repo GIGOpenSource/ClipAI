@@ -181,7 +181,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                         replace_existing=True
                     )
                 res = SimpleTask.objects.get(id=obj.id)
-                res.mission_id = job_id
+                res.exec_id = job_id
                 res.save()
             except Exception as e:
                 # 处理定时任务调度异常
