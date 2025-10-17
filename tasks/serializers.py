@@ -70,18 +70,18 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             # 人性化输入字段（write-only）
             'twitter_reply_to_tweet_id', 'facebook_page_id', 'facebook_comment_id', 'last_run_at',
             # 只读运行结果
-            'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text', 'task_remark',
-            'created_at', 'select_status', 'task_timing_type', 'exec_type', 'exec_datetime', 'exec_nums', 'exec_id',
+            'last_status', 'last_success', 'last_failed', 'last_run_at', 'task_remark',
+            'created_at', 'select_status', 'task_timing_type', 'exec_datetime', 'exec_nums', 'exec_id',
             'exec_status', 'exec_prom_text', 'prompt_text'
         ]
-        read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at', 'last_text',
-                            'created_at', 'updated_at']
+        read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at','created_at', 'updated_at']
 
     def validate(self, attrs):
         # 无条件移除只写字段，确保它们不会传递给模型
         twitter_reply_id = attrs.pop('twitter_reply_to_tweet_id', None)
         facebook_page_id = attrs.pop('facebook_page_id', None)
         facebook_comment_id = attrs.pop('facebook_comment_id', None)
+
 
         provider = (attrs.get('provider') or getattr(self.instance or object(), 'provider', '')).lower()
         task_type = attrs.get('type') or getattr(self.instance or object(), 'type', '')
@@ -129,8 +129,10 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
-        exec_type = validated_data.get("exec_type",[])
+        # exec_type = validated_data.get("exec_type",[])
+        exec_type = validated_data.pop("exec_type",[])
         prompt_text = validated_data.pop('prompt_text', [])
+
         exec_prom_text = validated_data['exec_prom_text']
         task_timing_type = validated_data['task_timing_type']  # 任务类型  once/ timing'
         if exec_prom_text is False:
