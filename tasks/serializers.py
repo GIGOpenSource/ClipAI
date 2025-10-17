@@ -44,7 +44,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
     exec_type = serializers.CharField(required=False, allow_blank=True,
                                       help_text='"daily"（每日多次）或"fixed"（固定时间一次）')
-    exec_datetime = serializers.DateTimeField(required=False, allow_null=True,
+    exec_datetime = serializers.DateTimeField(required=False, allow_null=True,format="%Y-%m-%d %H:%M:%S",
                                               help_text='固定执行时间（格式：YYYY-MM-DD HH:MM:SS）')
     exec_nums = serializers.IntegerField(required=False, allow_null=True,
                                          help_text='执行次数（仅当 exec_type=fixed 时有效）')
@@ -132,7 +132,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
         accounts_data = validated_data.pop('selected_accounts', [])
         selectStatus = validated_data["select_status"]
         # exec_type = validated_data.get("exec_type",[])
-        exec_type = validated_data.pop("exec_type",[])
+        exec_type = validated_data.get("exec_type",None)
         prompt_text = validated_data.pop('prompt_text', [])
 
         exec_prom_text = validated_data['exec_prom_text']
@@ -173,6 +173,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
                         args=(obj.id,),
                         kwargs={}
                     )
+                    # 暂停任务：更新状态为 paused
                 if exec_type == 'fixed':
                     job_id = f'mission_fixed_{obj.id}'
                     scheduler.add_job(

@@ -575,7 +575,10 @@ class TaskSchedulerView(APIView):
                 task.exec_status = "paused"
             elif method == 'resume':
                 task.exec_status="execting"
+
             response = method_map[method](job_id)
+
+
             task.save()
 
             return response
