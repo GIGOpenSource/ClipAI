@@ -55,6 +55,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     exec_prom_text = serializers.BooleanField(help_text='是否使用 prompt 提示语')
     prompt_text = serializers.CharField(required=False, allow_blank=True, allow_null=True,
                                         help_text='使用 prompt 提示语时的内容（仅当 exec_prom_text=true 时有效）')
+    last_text = serializers.CharField(required=False, allow_blank=True, allow_null=True,
+                                        help_text='提示词后缀')
 
     def get_prompt_name(self, obj):
         """获取关联的 prompt name"""
@@ -72,7 +74,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             # 只读运行结果
             'last_status', 'last_success', 'last_failed', 'last_run_at', 'task_remark',
             'created_at', 'select_status', 'task_timing_type', 'exec_datetime', 'exec_nums', 'exec_id',
-            'exec_status', 'exec_prom_text', 'prompt_text'
+            'exec_status', 'exec_prom_text', 'prompt_text','exec_type','last_text'
         ]
         read_only_fields = ['owner', 'last_status', 'last_success', 'last_failed', 'last_run_at','created_at', 'updated_at']
 
