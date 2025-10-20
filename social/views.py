@@ -274,42 +274,16 @@ class PoolAccountAllocation(APIView):
                         'type': 'integer',
                         'description': '分配账号数量'
                     },
-                    'user_id': {
+                    'from_user_id': {
                         'type': 'integer',
-                        'description': '目标用户ID'
+                        'description': '源用户ID（转出方）'
+                    },
+                    'to_user_id': {
+                        'type': 'integer',
+                        'description': '目标用户ID（转入方）'
                     },
                 },
-                'required': ['provider', 'count', 'user_id']
-            }
-        },
-        responses={
-            200: OpenApiResponse(description='分配成功'),
-            400: OpenApiResponse(description='请求参数错误'),
-            404: OpenApiResponse(description='用户不存在')
-        }
-    )
-    @extend_schema(
-        summary='为指定用户分配特定平台账号及指定数量',
-        tags=['账号池'],
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'provider': {
-                        'type': 'string',
-                        'enum': ['twitter', 'facebook'],
-                        'description': '平台类型'
-                    },
-                    'count': {
-                        'type': 'integer',
-                        'description': '分配账号数量'
-                    },
-                    'user_id': {
-                        'type': 'integer',
-                        'description': '目标用户ID'
-                    },
-                },
-                'required': ['provider', 'count', 'user_id']
+                'required': ['provider', 'count', 'from_user_id', 'to_user_id']
             }
         },
         responses={
@@ -320,16 +294,17 @@ class PoolAccountAllocation(APIView):
     )
     def post(self, request):
         """
-        为指定用户分配特定平台账号及指定数量
-        """
+               实现两个企业（用户）间的账号转移功能
+               """
         provider = request.data.get('provider')
         count = request.data.get('count')
-        user_id = request.data.get('user_id')
+        from_user_id = request.data.get('from_user_id')
+        to_user_id = request.data.get('to_user_id')
 
         # 参数验证
-        if not all([provider, count, user_id]):
+        if not all([provider, count, from_user_id, to_user_id]):
             return Response(
-                {'detail': '缺少必要参数: provider, count 或 user_id'},
+                {'detail': '缺少必要参数: provider, count, from_user_id 或 to_user_id'},
                 status=400
             )
 
@@ -344,36 +319,50 @@ class PoolAccountAllocation(APIView):
                 {'detail': 'count 必须为正整数'},
                 status=400
             )
+
+        if from_user_id == to_user_id:
+            return Response(
+                {'detail': '转出方和转入方不能为同一用户'},
+                status=400
+            )
+
         User = get_user_model()
         try:
-            # 验证目标用户是否存在
-            target_user = User.objects.get(id=user_id)
-            # 查找符合条件的账号（当前用户拥有的指定平台账号）
+            # 验证源用户和目标用户是否存在
+            from_user = User.objects.get(id=from_user_id)
+            to_user = User.objects.get(id=to_user_id)
+
+            # 查找源用户拥有的符合条件的账号
             accounts_qs = PoolAccount.objects.filter(
-                owner=request.user,
+                owner=from_user,
                 provider=provider,
                 status='active'
             )
-            # 检查是否有足够的账号
+
+            # 检查源用户是否有足够的账号
             available_count = accounts_qs.count()
             if available_count < count:
                 return Response({
-                    'detail': f'可用账号不足，当前仅有 {available_count} 个符合条件的账号',
-                    'available_count': available_count
+                    'detail': f'源用户可用账号不足，当前仅有 {available_count} 个符合条件的账号',
+                    'available_count': available_count,
                 }, status=400)
 
-            # 随机选择指定数量的账号进行分配
+            # 随机选择指定数量的账号进行转移
             selected_accounts = random.sample(list(accounts_qs), count)
-            # 执行分配（更新账号的所有者）
+
+            # 执行转移（更新账号的所有者）
             account_ids = [acc.id for acc in selected_accounts]
-            PoolAccount.objects.filter(id__in=account_ids).update(owner=target_user)
+            PoolAccount.objects.filter(id__in=account_ids).update(owner=to_user)
+
             return Response({
-                'detail': f'成功为用户 {target_user.username} 分配 {count} 个 {provider} 账号',
-                'allocated_count': count,
-                'account_ids': account_ids
+                'detail': f'成功从用户 {from_user.username} 向用户 {to_user.username} 转移 {count} 个 {provider} 账号',
+                'transferred_count': count,
+                'account_ids': account_ids,
+                'from_user': from_user.username,
+                'to_user': to_user.username,
             })
 
         except User.DoesNotExist:
-            return Response({'detail': '目标用户不存在'}, status=404)
+            return Response({'detail': '指定的用户不存在'}, status=404)
         except Exception as e:
-            return Response({'detail': f'分配失败: {str(e)}'}, status=400)
+            return Response({'detail': f'转移失败: {str(e)}'}, status=400)
