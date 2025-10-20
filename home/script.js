@@ -30,13 +30,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (loginButton) {
             loginButton.addEventListener('click', function() {
-                window.location.href = 'https://www.gigaisystem.com/app/';
+                window.location.href = 'https://www.gigpulseai.com/app/';
             });
         }
 
         if (loginButton1) {
             loginButton1.addEventListener('click', function() {
-                window.location.href = 'https://www.gigaisystem.com/app/';
+                window.location.href = 'https://www.gigpulseai.com/app/';
             });
         }
     });
