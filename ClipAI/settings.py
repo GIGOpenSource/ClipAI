@@ -12,11 +12,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
-from datetime import timedelta,datetime
+from datetime import timedelta, datetime
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -38,7 +37,6 @@ if not LOG_DIR.exists():
     LOG_DIR.mkdir()
 if not CurrentDayLog.exists():
     CurrentDayLog.mkdir()
-
 
 # Application definition
 
@@ -125,7 +123,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'ClipAI.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
@@ -134,11 +131,11 @@ if POSTGRES_HOST:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('POSTGRES_DB', 'clipai'),
+            'NAME': os.getenv('POSTGRES_DB', 'clipai1'),
             'USER': os.getenv('POSTGRES_USER', 'clipai'),
             'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'clipai'),
-            # 'HOST': "192.168.77.222",
-            'HOST': POSTGRES_HOST,
+            'HOST': "43.133.183.6",
+            # 'HOST': POSTGRES_HOST,
             'PORT': os.getenv('POSTGRES_PORT', '5432'),
         }
     }
@@ -149,7 +146,6 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -169,7 +165,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
@@ -181,7 +176,6 @@ TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 
 USE_TZ = False
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
