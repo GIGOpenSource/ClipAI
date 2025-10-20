@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiResponse, OpenApiParameter
 from accounts.permissions import IsStaffUser, IsOwnerOrAdmin
 from .models import AIConfig
 from .serializers import AIConfigSerializer
@@ -33,7 +33,6 @@ class AIConfigViewSet(viewsets.ModelViewSet):
         if user and user.is_authenticated:
             return qs.filter(created_by=user)
         return qs.none()
-
 
     @extend_schema(summary='获取默认配置', tags=['AI配置'])
     @action(detail=False, methods=['get'])

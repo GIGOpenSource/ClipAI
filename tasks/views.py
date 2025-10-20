@@ -32,6 +32,8 @@ from django_filters.rest_framework import DjangoFilterBackend
                                                     required=False, type=OpenApiTypes.DATE),
                                    OpenApiParameter(name='end_date', description='结束日期 (格式: YYYY-MM-DD)',
                                                     required=False, type=OpenApiTypes.DATE),
+                                   OpenApiParameter(name='enterprise_id',
+                                                    description='切换企业'),
                                    ]),
 )
 class SimpleTaskRunViewSet(viewsets.ModelViewSet):
@@ -58,11 +60,15 @@ class SimpleTaskRunViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        enterpriseId = self.request.query_params.get('enterprise_id')
         if not user or not user.is_authenticated:
             return TasksSimpletask.objects.none()
         # 获取用户有权限访问的任务运行记录
         if user.is_staff:
-            task_runs = TasksSimpletaskrun.objects.all()
+            if enterpriseId:
+                task_runs = TasksSimpletaskrun.objects.filter(owner=enterpriseId)
+            else:
+                task_runs = TasksSimpletaskrun.objects.all()
         else:
             task_runs = TasksSimpletaskrun.objects.filter(owner=user)
         start_date = self.request.query_params.get('start_date')
@@ -202,11 +208,13 @@ class TaskLogView(APIView):
 
 @extend_schema(tags=["任务执行（定时/非定时）"])
 @extend_schema_view(
-    list=extend_schema(summary='简单任务列表'),
-        parameters=[OpenApiParameter(name='exec_status', description='执行状态'),
-                    OpenApiParameter(name='provider', description='平台筛选'),
-                    OpenApiParameter(name='type', description='类型筛选'),
-                    ],
+    list=extend_schema(summary='简单任务列表', parameters=[OpenApiParameter(name='exec_status', description='执行状态'),
+                                                           OpenApiParameter(name='provider', description='平台筛选'),
+                                                           OpenApiParameter(name='type', description='类型筛选'),
+                                                           OpenApiParameter(name='enterprise_id',
+                                                                            description='切换企业'),
+                                                           ], ),
+
     retrieve=extend_schema(summary='简单任务详情'),
     create=extend_schema(summary='创建简单任务（定时/非定时）',
                          description="trigger:daily{exec_nums:n次}:,trigger:fixed:{exec_datetime：data}]"),
@@ -219,8 +227,9 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
     serializer_class = SimpleTaskSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
-    filterset_fields = ['exec_status','provider','type']
+    filterset_fields = ['exec_status', 'provider', 'type']
     search_fields = ['followee_nickname']
+
     def list(self, request, *args, **kwargs):
         # 获取过滤后的查询集
         queryset = self.filter_queryset(self.get_queryset())
@@ -233,12 +242,18 @@ class SimpleTaskViewSet(viewsets.ModelViewSet):
         # 如果没有分页，返回普通响应
         serializer = self.get_serializer(queryset, many=True)
         return ApiResponse(serializer.data)
+
     def get_queryset(self):
         qs = super().get_queryset()
         qs = qs.select_related('prompt', 'owner').prefetch_related('selected_accounts')
-
-        if not (self.request.user and self.request.user.is_authenticated and self.request.user.is_staff):
+        enterpriseId = self.request.query_params.get('enterprise_id')
+        owner = self.request.user
+        if not (owner and owner.is_authenticated and owner.is_staff):
             qs = qs.filter(owner=self.request.user)
+        else:
+            if enterpriseId:
+                qs = qs.filter(owner=enterpriseId)
+
         provider = self.request.query_params.get('provider')
         if provider:
             qs = qs.filter(provider=provider)
@@ -509,9 +524,11 @@ from datetime import datetime
 
 from utils.autoTask import scheduler
 
+
 @extend_schema(tags=['任务执行（定时/非定时）'])
 class TaskSchedulerView(APIView):
     """配置定时任务的接口"""
+
     @extend_schema(
         summary='任务的暂停、恢复、删除、获取等操作',
         description='对指定任务执行暂停、恢复、删除、获取等操作',
@@ -574,10 +591,9 @@ class TaskSchedulerView(APIView):
                 # 暂停任务：更新状态为 paused
                 task.exec_status = "paused"
             elif method == 'resume':
-                task.exec_status="execting"
+                task.exec_status = "execting"
 
             response = method_map[method](job_id)
-
 
             task.save()
 

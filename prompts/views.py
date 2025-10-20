@@ -10,7 +10,8 @@ from django.contrib.auth import get_user_model
 
 
 @extend_schema_view(
-    list=extend_schema(summary='提示词配置列表', tags=['提示词配置']),
+    list=extend_schema(summary='提示词配置列表', tags=['提示词配置'], parameters=[OpenApiParameter(name='enterprise_id',
+                                                                                                   description='切换企业'), ]),
     retrieve=extend_schema(summary='提示词配置详情', tags=['提示词配置']),
     create=extend_schema(summary='创建提示词配置', tags=['提示词配置']),
     update=extend_schema(summary='更新提示词配置', tags=['提示词配置']),
@@ -24,16 +25,13 @@ class PromptConfigViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        owner_id = self.request.query_params.get('owner_id')
-        if self.request.user and self.request.user.is_authenticated and self.request.user.is_staff:
-            # 管理员：仅当显式传 owner_id 时过滤
-            if owner_id:
-                qs = qs.filter(owner_id=owner_id)
+        user = self.request.user
+        enterpriseId = self.request.query_params.get('enterprise_id')
+        if user.is_staff:
+            if enterpriseId:
+                qs = qs.filter(owner_id=enterpriseId)
         else:
-            # 非管理员：默认过滤到当前用户
-            owner_id = owner_id or (self.request.user.id if self.request.user.is_authenticated else None)
-            if owner_id:
-                qs = qs.filter(owner_id=owner_id)
+            qs = qs.filter(owner_id=user)
         scene = self.request.query_params.get('scene')
         if scene:
             qs = qs.filter(scene=scene)
@@ -71,6 +69,5 @@ class PromptConfigViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(owner=owner)
         return Response(serializer.data, status=201)
-
 
 # Create your views here.

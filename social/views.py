@@ -18,6 +18,8 @@ from .serializers import PoolAccountSerializer
 
 @extend_schema_view(
     list=extend_schema(summary='账号池列表',
+                       parameters=[ OpenApiParameter(name='enterprise_id',
+                                                    description='切换企业'),]
                        ),
     retrieve=extend_schema(summary='账号池详情', tags=['账号池']),
     create=extend_schema(summary='创建账号池账号', tags=['账号池']),
@@ -40,10 +42,14 @@ class PoolAccountViewSet(viewsets.ModelViewSet):
         remark_q = self.request.query_params.get('remark')  # 添加备注查询参数
         remark_exact = self.request.query_params.get('remark_exact')  # 精确匹配查询参数
         owner_id = self.request.query_params.get('owner_id')
+        enterpriseId = self.request.query_params.get('enterprise_id')
         # 权限隔离：普通用户只能看到自己创建的账户
         if not user.is_staff:
             # 普通用户
             qs = qs.filter(owner=user)
+        else:
+            if enterpriseId:
+                qs = qs.filter(owner=enterpriseId)
         if user.is_staff:
             # 如果没有 owner 字段，普通用户只能看到状态为 active 的公共账户
             qs = qs.filter(status='active')
