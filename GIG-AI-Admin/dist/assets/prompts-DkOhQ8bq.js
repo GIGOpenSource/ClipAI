@@ -1,0 +1,1 @@
+import{e as o,p as r,f as t,h as n}from"./index-BSm4yeEa.js";const e=s=>o("/prompts/configs/",{params:s}),c=s=>t("/prompts/configs/admin_create/",s),g=(s,p)=>r(`/prompts/configs/${s}/`,p),m=s=>n(`/prompts/configs/${s}/`),f=s=>o(`/prompts/configs/${s}/`),i=s=>t("/prompts/configs/",s);export{f as a,c as b,i as c,m as d,e as g,g as u};
